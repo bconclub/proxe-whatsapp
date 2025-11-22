@@ -79,6 +79,23 @@ jobs:
           key: ${{ secrets.VPS_DEPLOY_KEY }}
           port: ${{ secrets.VPS_PORT || 22 }}
           script: |
-            sleep 5
-            curl -f http://localhost:3000/health || exit 1
+            echo "⏳ Waiting for app to be ready..."
+            sleep 10
+            echo "🏥 Checking health endpoint..."
+            # Wait for PM2 process to be online
+            for i in {1..30}; do
+              if pm2 describe whatsapp-proxe | grep -q "online"; then
+                echo "✅ PM2 process is online"
+                break
+              fi
+              echo "Waiting for PM2 process... ($i/30)"
+              sleep 2
+            done
+            # Check health endpoint
+            curl -f http://localhost:3001/health || {
+              echo "❌ Health check failed"
+              pm2 logs whatsapp-proxe --lines 20 --nostream
+              exit 1
+            }
+            echo "✅ Health check passed!"
 
