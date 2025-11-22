@@ -1,4 +1,5 @@
 name: Deploy WhatsApp PROXe to VPS
+# Port: 3002 (dashboard uses 3001)
 
 on:
   push:
