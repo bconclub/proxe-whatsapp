@@ -49,7 +49,7 @@ import scheduleRoutes from './routes/schedule.js';
 import retrainRoutes from './routes/retrain.js';
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 
 // Security middleware - disable CSP for debug page
 app.use(helmet({

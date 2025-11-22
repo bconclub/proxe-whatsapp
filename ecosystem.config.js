@@ -5,17 +5,17 @@
 
 module.exports = {
   apps: [{
-    name: 'proxe-whatsapp-backend',
+    name: 'whatsapp-proxe',
     script: './src/server.js',
     instances: 2, // Cluster mode - 2 instances
     exec_mode: 'cluster',
     env: {
       NODE_ENV: 'production',
-      PORT: 3000
+      PORT: 3001
     },
     env_production: {
       NODE_ENV: 'production',
-      PORT: 3000
+      PORT: 3001
     },
     // Logging
     error_file: './logs/pm2-error.log',

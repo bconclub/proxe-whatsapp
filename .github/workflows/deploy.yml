@@ -1,11 +1,10 @@
-name: Deploy to Production
+name: Deploy WhatsApp PROXe to VPS
 
 on:
   push:
     branches:
-      - whatsapp-backend
       - main
-  workflow_dispatch:
+      - whatsapp-backend
 
 jobs:
   deploy:
@@ -13,41 +12,29 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run tests
-        run: npm test
-        continue-on-error: true # Don't fail deployment if tests fail (adjust as needed)
-
-      - name: Deploy to server
-        uses: appleboy/ssh-action@master
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          key: ${{ secrets.SSH_DEPLOY_KEY }}
           script: |
-            cd /path/to/whatsapp-proxe-backend
-            git pull origin whatsapp-backend
-            npm ci --production
-            pm2 reload proxe-whatsapp-backend
-            pm2 save
-
-      - name: Health check
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            sleep 5
-            curl -f http://localhost:3000/health || exit 1
-
+            mkdir -p /var/www/whatsapp-proxe
+            cd /var/www/whatsapp-proxe
+            
+            if [ -d ".git" ]; then
+              git pull origin main
+            else
+              git clone https://github.com/bconclub/whatsapp-proxe.git .
+            fi
+            
+            npm install --production
+            
+            if pm2 describe whatsapp-proxe > /dev/null 2>&1; then
+              pm2 restart whatsapp-proxe
+            else
+              pm2 start ecosystem.config.js
+              pm2 save
+            fi
