@@ -24,7 +24,7 @@ export const claudeClient = new Proxy({}, {
 });
 
 export const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
-export const CLAUDE_MAX_TOKENS = parseInt(process.env.CLAUDE_MAX_TOKENS) || 2000;
+export const CLAUDE_MAX_TOKENS = parseInt(process.env.CLAUDE_MAX_TOKENS) || 300; // Reduced for short WhatsApp responses
 
 // Log initialization after dotenv loads
 setTimeout(() => {
