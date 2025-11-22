@@ -60,13 +60,12 @@ jobs:
             # PM2 operations
             echo "🔄 Managing PM2 process..."
             if pm2 describe whatsapp-proxe > /dev/null 2>&1; then
-              echo "♻️  Restarting existing PM2 process..."
-              pm2 restart whatsapp-proxe
-            else
-              echo "▶️  Starting new PM2 process..."
-              pm2 start ecosystem.config.cjs
-              pm2 save
+              echo "♻️  Stopping existing PM2 process..."
+              pm2 delete whatsapp-proxe || true
             fi
+            echo "▶️  Starting PM2 process..."
+            pm2 start ecosystem.config.cjs
+            pm2 save
             
             echo "✅ Deployment complete!"
             pm2 status
