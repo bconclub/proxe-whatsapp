@@ -71,16 +71,16 @@ If it connects without asking for a password, you're good!
 2. Click **Settings** → **Secrets and variables** → **Actions**
 3. Click **New repository secret** and add these three secrets:
 
-### Secret 1: `SERVER_HOST`
-- **Name:** `SERVER_HOST`
+### Secret 1: `VPS_HOST`
+- **Name:** `VPS_HOST`
 - **Value:** Your VPS IP address or hostname (e.g., `123.45.67.89` or `vps.example.com`)
 
-### Secret 2: `SERVER_USER`
-- **Name:** `SERVER_USER`
+### Secret 2: `VPS_USER`
+- **Name:** `VPS_USER`
 - **Value:** Your SSH username (e.g., `root` or `ubuntu` or `deploy`)
 
-### Secret 3: `SSH_DEPLOY_KEY`
-- **Name:** `SSH_DEPLOY_KEY`
+### Secret 3: `VPS_DEPLOY_KEY`
+- **Name:** `VPS_DEPLOY_KEY`
 - **Value:** The **entire contents** of your **private key** file:
   ```bash
   cat ~/.ssh/github_actions_deploy
@@ -93,8 +93,8 @@ If it connects without asking for a password, you're good!
   -----END OPENSSH PRIVATE KEY-----
   ```
 
-### Optional: Secret 4: `SERVER_PORT`
-- **Name:** `SERVER_PORT`
+### Optional: Secret 4: `VPS_PORT`
+- **Name:** `VPS_PORT`
 - **Value:** Your SSH port (default is `22`, only set if different)
 
 ## Step 5: Verify Server Permissions

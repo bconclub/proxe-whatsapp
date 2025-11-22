@@ -153,4 +153,3 @@ function formatForTraining(conversationPairs) {
     }
   }));
 }
-
