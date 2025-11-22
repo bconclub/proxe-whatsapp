@@ -375,6 +375,24 @@ app.get('/status/database', async (req, res) => {
   }
 });
 
+app.get('/status/metrics', async (req, res) => {
+  try {
+    const { getAverageResponseTimes } = await import('./services/loggingService.js');
+    const hours = parseInt(req.query.hours) || 24;
+    const metrics = await getAverageResponseTimes({ hours });
+    res.json(metrics);
+  } catch (error) {
+    res.json({
+      averageResponseTime: 0,
+      minResponseTime: 0,
+      maxResponseTime: 0,
+      totalRequests: 0,
+      periodHours: 24,
+      error: error.message
+    });
+  }
+});
+
 app.get('/status/api', async (req, res) => {
   const apis = {};
   

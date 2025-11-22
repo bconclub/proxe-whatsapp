@@ -1,6 +1,6 @@
 import express from 'express';
 import { z } from 'zod';
-import { storeConversationLog } from '../services/loggingService.js';
+import { storeConversationLog, getAverageResponseTimes } from '../services/loggingService.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 const router = express.Router();
@@ -48,6 +48,20 @@ router.post('/store', async (req, res, next) => {
       logId: log.id,
       inserted: true
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/logs/metrics
+ * Get average response time metrics
+ */
+router.get('/metrics', async (req, res, next) => {
+  try {
+    const hours = parseInt(req.query.hours) || 24;
+    const metrics = await getAverageResponseTimes({ hours });
+    res.json(metrics);
   } catch (error) {
     next(error);
   }

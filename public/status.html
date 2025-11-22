@@ -245,6 +245,11 @@
                 <div id="apiStatus" class="loading">Checking...</div>
             </div>
 
+            <div class="card">
+                <h2><i class="fas fa-tachometer-alt"></i> Response Times</h2>
+                <div id="metrics" class="loading">Checking...</div>
+            </div>
+
             <div class="card full-width">
                 <h2><i class="fas fa-exclamation-triangle"></i> Recent Errors</h2>
                 <div id="errors" class="loading">Loading...</div>
@@ -377,6 +382,64 @@
             }
         }
 
+        async function checkMetrics() {
+            const div = document.getElementById('metrics');
+            const data = await fetchJSON(`${API_BASE}/status/metrics`);
+            
+            if (data.error) {
+                div.innerHTML = `<span class="status-badge error">Error</span><br><br><small>${data.error}</small>`;
+            } else {
+                const formatTime = (ms) => {
+                    if (ms < 1000) return `${ms}ms`;
+                    return `${(ms / 1000).toFixed(2)}s`;
+                };
+
+                const avgTime = data.averageResponseTime || 0;
+                const minTime = data.minResponseTime || 0;
+                const maxTime = data.maxResponseTime || 0;
+                const totalRequests = data.totalRequests || 0;
+                const periodHours = data.periodHours || 24;
+
+                if (totalRequests === 0) {
+                    div.innerHTML = `
+                        <div class="empty-state">No data available</div>
+                        <div class="metric">
+                            <span class="metric-label">Period</span>
+                            <span class="metric-value">Last ${periodHours}h</span>
+                        </div>
+                    `;
+                } else {
+                    // Color code based on average response time
+                    let avgBadgeClass = 'ok';
+                    if (avgTime > 5000) avgBadgeClass = 'error';
+                    else if (avgTime > 3000) avgBadgeClass = 'warning';
+
+                    div.innerHTML = `
+                        <div class="metric">
+                            <span class="metric-label">Average</span>
+                            <span class="status-badge ${avgBadgeClass}">${formatTime(avgTime)}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Min</span>
+                            <span class="metric-value">${formatTime(minTime)}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Max</span>
+                            <span class="metric-value">${formatTime(maxTime)}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Requests</span>
+                            <span class="metric-value">${totalRequests}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Period</span>
+                            <span class="metric-value">Last ${periodHours}h</span>
+                        </div>
+                    `;
+                }
+            }
+        }
+
         async function refreshAll() {
             const btn = document.querySelector('.btn');
             const icon = btn.querySelector('.fa-sync-alt');
@@ -402,6 +465,7 @@
                     checkEnvKeys(),
                     checkDatabase(),
                     checkAPI(),
+                    checkMetrics(),
                     loadErrors()
                 ]);
             } catch (error) {
