@@ -402,10 +402,14 @@
 
                 if (totalRequests === 0) {
                     div.innerHTML = `
-                        <div class="empty-state">No data available</div>
+                        <div class="empty-state">No response time data available</div>
                         <div class="metric">
                             <span class="metric-label">Sample</span>
                             <span class="metric-value">Last ${sampleSize} responses</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Note</span>
+                            <span class="metric-value" style="font-size: 11px; color: #666;">Send a message to generate data</span>
                         </div>
                     `;
                 } else {

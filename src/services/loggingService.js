@@ -183,13 +183,12 @@ export async function getMessagesForRetraining(filters = {}) {
  */
 export async function getAverageResponseTimes() {
   try {
-    // Get the last 5 agent messages with response_time_ms in metadata
+    // Get the last 5 agent messages (we'll filter for response_time_ms in code)
     const { data: messages, error } = await supabase
       .from('messages')
       .select('metadata, created_at')
       .eq('channel', 'whatsapp')
       .eq('sender', 'agent')
-      .not('metadata', 'is', null)
       .order('created_at', { ascending: false })
       .limit(5);
 
@@ -198,13 +197,24 @@ export async function getAverageResponseTimes() {
       throw error;
     }
 
+    logger.info(`Found ${messages?.length || 0} agent messages for response time calculation`);
+
     // Extract response times from metadata
     const responseTimes = (messages || [])
       .map(msg => {
         const metadata = msg.metadata || {};
-        return metadata.response_time_ms;
+        const responseTime = metadata.response_time_ms;
+        
+        // Log for debugging
+        if (!responseTime) {
+          logger.debug(`Message ${msg.created_at} has no response_time_ms in metadata:`, JSON.stringify(metadata));
+        }
+        
+        return responseTime;
       })
       .filter(time => typeof time === 'number' && time > 0);
+
+    logger.info(`Extracted ${responseTimes.length} valid response times from ${messages?.length || 0} messages`);
 
     if (responseTimes.length === 0) {
       return {

@@ -381,6 +381,7 @@ app.get('/status/metrics', async (req, res) => {
     const metrics = await getAverageResponseTimes();
     res.json(metrics);
   } catch (error) {
+    logger.error('Error in /status/metrics:', error);
     res.json({
       averageResponseTime: 0,
       minResponseTime: 0,
@@ -389,6 +390,43 @@ app.get('/status/metrics', async (req, res) => {
       sampleSize: 5,
       error: error.message
     });
+  }
+});
+
+// Debug endpoint to check messages metadata
+app.get('/debug/metrics', async (req, res) => {
+  try {
+    const { supabase } = await import('./config/supabase.js');
+    
+    // Get last 10 agent messages to see what we have
+    const { data: messages, error } = await supabase
+      .from('messages')
+      .select('id, metadata, created_at, sender, channel')
+      .eq('channel', 'whatsapp')
+      .eq('sender', 'agent')
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    if (error) {
+      return res.status(500).json({ error: error.message });
+    }
+
+    const messagesWithMetadata = (messages || []).map(msg => ({
+      id: msg.id,
+      created_at: msg.created_at,
+      has_metadata: !!msg.metadata,
+      metadata_keys: msg.metadata ? Object.keys(msg.metadata) : [],
+      response_time_ms: msg.metadata?.response_time_ms || null,
+      metadata: msg.metadata
+    }));
+
+    res.json({
+      total_messages: messages?.length || 0,
+      messages: messagesWithMetadata,
+      messages_with_response_time: messagesWithMetadata.filter(m => m.response_time_ms !== null).length
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
