@@ -247,21 +247,51 @@ app.get('/debug/test-whatsapp', async (req, res) => {
 // Clear errors endpoint
 // Status endpoints
 app.get('/status/env', (req, res) => {
-  const requiredKeys = [
-    'SUPABASE_URL',
-    'SUPABASE_KEY',
-    'SUPABASE_SERVICE_KEY',
-    'CLAUDE_API_KEY',
-    'CLAUDE_MODEL',
-    'PORT',
-    'NODE_ENV'
-  ];
+  // Check for environment variables, supporting both naming conventions
+  const supabaseUrl = process.env.NEXT_PUBLIC_PROXE_SUPABASE_URL || process.env.SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_PROXE_SUPABASE_ANON_KEY || process.env.SUPABASE_KEY;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
   
-  const keys = requiredKeys.map(key => ({
-    name: key,
-    set: !!process.env[key],
-    preview: process.env[key] ? `${process.env[key].substring(0, 10)}...` : null
-  }));
+  const keys = [
+    {
+      name: 'SUPABASE_URL',
+      set: !!supabaseUrl,
+      preview: supabaseUrl ? `${supabaseUrl.substring(0, 10)}...` : null,
+      source: process.env.NEXT_PUBLIC_PROXE_SUPABASE_URL ? 'NEXT_PUBLIC_PROXE_SUPABASE_URL' : (process.env.SUPABASE_URL ? 'SUPABASE_URL' : null)
+    },
+    {
+      name: 'SUPABASE_KEY',
+      set: !!supabaseKey,
+      preview: supabaseKey ? `${supabaseKey.substring(0, 10)}...` : null,
+      source: process.env.NEXT_PUBLIC_PROXE_SUPABASE_ANON_KEY ? 'NEXT_PUBLIC_PROXE_SUPABASE_ANON_KEY' : (process.env.SUPABASE_KEY ? 'SUPABASE_KEY' : null)
+    },
+    {
+      name: 'SUPABASE_SERVICE_KEY',
+      set: !!supabaseServiceKey,
+      preview: supabaseServiceKey ? `${supabaseServiceKey.substring(0, 10)}...` : null,
+      source: process.env.SUPABASE_SERVICE_KEY ? 'SUPABASE_SERVICE_KEY' : (process.env.SUPABASE_SERVICE_ROLE_KEY ? 'SUPABASE_SERVICE_ROLE_KEY' : null)
+    },
+    {
+      name: 'CLAUDE_API_KEY',
+      set: !!process.env.CLAUDE_API_KEY,
+      preview: process.env.CLAUDE_API_KEY ? `${process.env.CLAUDE_API_KEY.substring(0, 10)}...` : null
+    },
+    {
+      name: 'CLAUDE_MODEL',
+      set: !!process.env.CLAUDE_MODEL,
+      preview: process.env.CLAUDE_MODEL || null
+    },
+    {
+      name: 'PORT',
+      set: !!process.env.PORT,
+      preview: process.env.PORT || null
+    },
+    {
+      name: 'NODE_ENV',
+      set: !!process.env.NODE_ENV,
+      preview: process.env.NODE_ENV || null
+    }
+  ];
   
   res.json({ keys });
 });
@@ -299,7 +329,10 @@ app.get('/status/api', async (req, res) => {
   // Check Supabase API
   try {
     const { supabase } = await import('./config/supabase.js');
-    if (supabase && process.env.SUPABASE_URL && process.env.SUPABASE_KEY) {
+    // Check for both naming conventions
+    const supabaseUrl = process.env.NEXT_PUBLIC_PROXE_SUPABASE_URL || process.env.SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_PROXE_SUPABASE_ANON_KEY || process.env.SUPABASE_KEY;
+    if (supabase && supabaseUrl && supabaseKey) {
       apis.Supabase = { valid: true };
     } else {
       apis.Supabase = { valid: false, error: 'Credentials not configured' };
