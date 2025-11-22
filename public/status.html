@@ -398,14 +398,14 @@
                 const minTime = data.minResponseTime || 0;
                 const maxTime = data.maxResponseTime || 0;
                 const totalRequests = data.totalRequests || 0;
-                const periodHours = data.periodHours || 24;
+                const sampleSize = data.sampleSize || 5;
 
                 if (totalRequests === 0) {
                     div.innerHTML = `
                         <div class="empty-state">No data available</div>
                         <div class="metric">
-                            <span class="metric-label">Period</span>
-                            <span class="metric-value">Last ${periodHours}h</span>
+                            <span class="metric-label">Sample</span>
+                            <span class="metric-value">Last ${sampleSize} responses</span>
                         </div>
                     `;
                 } else {
@@ -428,12 +428,8 @@
                             <span class="metric-value">${formatTime(maxTime)}</span>
                         </div>
                         <div class="metric">
-                            <span class="metric-label">Requests</span>
-                            <span class="metric-value">${totalRequests}</span>
-                        </div>
-                        <div class="metric">
-                            <span class="metric-label">Period</span>
-                            <span class="metric-value">Last ${periodHours}h</span>
+                            <span class="metric-label">Sample</span>
+                            <span class="metric-value">${totalRequests}/${sampleSize}</span>
                         </div>
                     `;
                 }

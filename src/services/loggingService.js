@@ -178,24 +178,20 @@ export async function getMessagesForRetraining(filters = {}) {
 }
 
 /**
- * Get average response time metrics
- * @param {object} options - Options for calculating metrics
- * @param {number} options.hours - Number of hours to look back (default: 24)
+ * Get average response time metrics from the last 5 responses
  * @returns {Promise<object>} Object with average response times
  */
-export async function getAverageResponseTimes(options = {}) {
+export async function getAverageResponseTimes() {
   try {
-    const hours = options.hours || 24;
-    const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
-
-    // Get all agent messages with response_time_ms in metadata from the last N hours
+    // Get the last 5 agent messages with response_time_ms in metadata
     const { data: messages, error } = await supabase
       .from('messages')
       .select('metadata, created_at')
       .eq('channel', 'whatsapp')
       .eq('sender', 'agent')
-      .gte('created_at', since)
-      .not('metadata', 'is', null);
+      .not('metadata', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(5);
 
     if (error) {
       logger.error('Error fetching messages for response time calculation:', error);
@@ -216,7 +212,7 @@ export async function getAverageResponseTimes(options = {}) {
         minResponseTime: 0,
         maxResponseTime: 0,
         totalRequests: 0,
-        periodHours: hours
+        sampleSize: 5
       };
     }
 
@@ -230,7 +226,7 @@ export async function getAverageResponseTimes(options = {}) {
       minResponseTime: min,
       maxResponseTime: max,
       totalRequests: responseTimes.length,
-      periodHours: hours
+      sampleSize: 5
     };
   } catch (error) {
     logger.error('Error in getAverageResponseTimes:', error);

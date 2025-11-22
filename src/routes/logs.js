@@ -55,12 +55,11 @@ router.post('/store', async (req, res, next) => {
 
 /**
  * GET /api/logs/metrics
- * Get average response time metrics
+ * Get average response time metrics from last 5 responses
  */
 router.get('/metrics', async (req, res, next) => {
   try {
-    const hours = parseInt(req.query.hours) || 24;
-    const metrics = await getAverageResponseTimes({ hours });
+    const metrics = await getAverageResponseTimes();
     res.json(metrics);
   } catch (error) {
     next(error);
