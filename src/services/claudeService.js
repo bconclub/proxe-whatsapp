@@ -57,8 +57,8 @@ export async function generateResponse(customerContext, message, conversationHis
     const responseTime = Date.now() - startTime;
     const rawResponse = response.content[0].text;
     
-    // Parse response for action indicators
-    const parsed = parseResponse(rawResponse);
+    // Parse response for action indicators (pass user message for intent detection)
+    const parsed = parseResponse(rawResponse, message);
     
     logger.info('Claude response generated', {
       tokensUsed: response.usage?.output_tokens || 0,
@@ -131,19 +131,96 @@ function buildCustomerContextNote(context) {
 }
 
 /**
+ * Detect user intent and suggest relevant buttons
+ */
+function detectIntentAndSuggestButtons(userMessage, aiResponse) {
+  const lowerMessage = userMessage.toLowerCase();
+  const lowerResponse = aiResponse.toLowerCase();
+  const suggestedButtons = [];
+  
+  // Intent patterns and their corresponding buttons
+  const intentPatterns = [
+    {
+      keywords: ['call', 'schedule', 'book', 'appointment', 'meeting', 'demo', 'talk', 'speak'],
+      buttons: ['Book a Call', 'Schedule Demo']
+    },
+    {
+      keywords: ['price', 'pricing', 'cost', 'fee', 'charge', 'how much', 'pricing plan', 'plan'],
+      buttons: ['View Pricing', 'Get Quote']
+    },
+    {
+      keywords: ['info', 'information', 'details', 'tell me', 'explain', 'what is', 'how does'],
+      buttons: ['Learn More', 'Get Info']
+    },
+    {
+      keywords: ['start', 'begin', 'sign up', 'register', 'get started', 'try', 'demo'],
+      buttons: ['Get Started', 'Sign Up']
+    },
+    {
+      keywords: ['contact', 'reach', 'email', 'phone', 'support', 'help'],
+      buttons: ['Contact Us', 'Get Support']
+    },
+    {
+      keywords: ['property', 'properties', 'listing', 'space', 'office', 'commercial'],
+      buttons: ['View Properties', 'Browse Listings']
+    }
+  ];
+  
+  // Check user message for intent
+  for (const pattern of intentPatterns) {
+    if (pattern.keywords.some(keyword => lowerMessage.includes(keyword))) {
+      suggestedButtons.push(...pattern.buttons);
+      break; // Only add buttons for the first matching intent
+    }
+  }
+  
+  // Also check AI response for context
+  if (lowerResponse.includes('call') || lowerResponse.includes('schedule')) {
+    if (!suggestedButtons.some(b => b.toLowerCase().includes('call'))) {
+      suggestedButtons.push('Book a Call');
+    }
+  }
+  
+  if (lowerResponse.includes('price') || lowerResponse.includes('cost')) {
+    if (!suggestedButtons.some(b => b.toLowerCase().includes('price'))) {
+      suggestedButtons.push('View Pricing');
+    }
+  }
+  
+  // Remove duplicates and limit to 3 buttons (WhatsApp limit)
+  return [...new Set(suggestedButtons)].slice(0, 3);
+}
+
+/**
  * Parse Claude response for buttons and metadata
  */
-function parseResponse(rawResponse) {
+function parseResponse(rawResponse, userMessage = '') {
   const buttonRegex = /→\s*BUTTON:\s*(.+)/gi;
   const buttons = [];
   let text = rawResponse;
 
-  // Extract buttons
+  // Extract buttons from Claude response
   let match;
   while ((match = buttonRegex.exec(rawResponse)) !== null) {
     buttons.push(match[1].trim());
     // Remove button markers from text
     text = text.replace(match[0], '').trim();
+  }
+
+  // Auto-detect intent and add relevant buttons if none were suggested by Claude
+  if (buttons.length === 0 && userMessage) {
+    const suggestedButtons = detectIntentAndSuggestButtons(userMessage, rawResponse);
+    buttons.push(...suggestedButtons);
+  } else if (buttons.length > 0 && userMessage) {
+    // Merge Claude's buttons with intent-based suggestions (avoid duplicates)
+    const suggestedButtons = detectIntentAndSuggestButtons(userMessage, rawResponse);
+    suggestedButtons.forEach(btn => {
+      if (!buttons.some(b => b.toLowerCase() === btn.toLowerCase())) {
+        buttons.push(btn);
+      }
+    });
+    // Limit to 3 buttons total (WhatsApp limit)
+    buttons.splice(3);
   }
 
   // Determine response type
