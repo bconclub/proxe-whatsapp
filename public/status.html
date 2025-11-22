@@ -4,205 +4,224 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WhatsApp PROXe - System Status</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #ffffff;
             min-height: 100vh;
-            padding: 20px;
-            color: #333;
+            padding: 40px 20px;
+            color: #000000;
         }
         .container {
             max-width: 1200px;
             margin: 0 auto;
         }
         .header {
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border-bottom: 2px solid #000000;
+            padding-bottom: 20px;
+            margin-bottom: 40px;
         }
         .header h1 {
-            color: #667eea;
-            margin-bottom: 10px;
+            font-size: 32px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
         }
         .header .subtitle {
-            color: #666;
+            color: #666666;
             font-size: 14px;
+            margin-left: 44px;
+        }
+        .header-actions {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        .btn {
+            background: #000000;
+            color: #ffffff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: opacity 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn:hover {
+            opacity: 0.8;
+        }
+        .btn:active {
+            opacity: 0.6;
         }
         .status-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-            margin-bottom: 20px;
+            gap: 24px;
+            margin-bottom: 40px;
         }
         .card {
-            background: white;
-            padding: 25px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            background: #ffffff;
+            border: 1px solid #e0e0e0;
+            padding: 24px;
+            border-radius: 0;
         }
         .card h2 {
-            color: #667eea;
-            margin-bottom: 15px;
-            font-size: 18px;
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 20px;
             display: flex;
             align-items: center;
             gap: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .card h2 i {
+            font-size: 18px;
         }
         .status-badge {
             display: inline-block;
-            padding: 5px 12px;
-            border-radius: 20px;
-            font-size: 12px;
+            padding: 4px 12px;
+            border: 1px solid #000000;
+            font-size: 11px;
             font-weight: 600;
             text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         .status-badge.ok {
-            background: #10b981;
-            color: white;
+            background: #000000;
+            color: #ffffff;
         }
         .status-badge.error {
-            background: #ef4444;
-            color: white;
+            background: #ffffff;
+            color: #000000;
+            border-color: #000000;
         }
         .status-badge.warning {
-            background: #f59e0b;
-            color: white;
-        }
-        .status-badge.info {
-            background: #3b82f6;
-            color: white;
+            background: #ffffff;
+            color: #000000;
+            border-color: #666666;
         }
         .key-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 10px;
-            margin: 5px 0;
-            background: #f9fafb;
-            border-radius: 5px;
-            border-left: 3px solid #e5e7eb;
+            padding: 12px 0;
+            border-bottom: 1px solid #e0e0e0;
         }
-        .key-item.set {
-            border-left-color: #10b981;
-        }
-        .key-item.missing {
-            border-left-color: #ef4444;
+        .key-item:last-child {
+            border-bottom: none;
         }
         .key-name {
-            font-weight: 600;
-            color: #374151;
-        }
-        .key-value {
-            font-size: 12px;
-            color: #6b7280;
-            font-family: monospace;
+            font-weight: 500;
+            font-size: 14px;
         }
         .error-item {
-            padding: 12px;
-            margin: 8px 0;
-            background: #fef2f2;
-            border-left: 3px solid #ef4444;
-            border-radius: 5px;
+            padding: 16px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .error-item:last-child {
+            border-bottom: none;
         }
         .error-time {
             font-size: 11px;
-            color: #9ca3af;
-            margin-bottom: 5px;
+            color: #666666;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         .error-message {
-            color: #dc2626;
-            font-weight: 500;
-        }
-        .refresh-btn {
-            background: #667eea;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 600;
-            transition: all 0.3s;
-        }
-        .refresh-btn:hover {
-            background: #5568d3;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-        }
-        .refresh-btn:active {
-            transform: translateY(0);
+            color: #000000;
+            font-size: 13px;
+            font-family: 'Courier New', monospace;
         }
         .loading {
-            color: #6b7280;
+            color: #666666;
             font-style: italic;
+            font-size: 14px;
         }
         .metric {
             display: flex;
             justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px solid #e5e7eb;
+            padding: 10px 0;
+            border-bottom: 1px solid #e0e0e0;
         }
         .metric:last-child {
             border-bottom: none;
         }
         .metric-label {
-            color: #6b7280;
+            color: #666666;
+            font-size: 14px;
         }
         .metric-value {
-            font-weight: 600;
-            color: #111827;
+            font-weight: 500;
+            color: #000000;
+            font-size: 14px;
         }
         .full-width {
             grid-column: 1 / -1;
         }
         .timestamp {
             text-align: center;
-            color: #6b7280;
-            font-size: 12px;
-            margin-top: 20px;
+            color: #666666;
+            font-size: 11px;
+            margin-top: 40px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .empty-state {
+            color: #999999;
+            font-size: 13px;
+            font-style: italic;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🚀 WhatsApp PROXe System Status</h1>
-            <div class="subtitle">Real-time system monitoring and diagnostics</div>
-            <button class="refresh-btn" onclick="refreshAll()" style="margin-top: 15px;">🔄 Refresh All</button>
+            <h1>
+                <i class="fas fa-server"></i>
+                System Status
+            </h1>
+            <div class="subtitle">Real-time monitoring and diagnostics</div>
+            <div class="header-actions">
+                <button class="btn" onclick="refreshAll()">
+                    <i class="fas fa-sync-alt"></i>
+                    Refresh
+                </button>
+            </div>
         </div>
 
         <div class="status-grid">
-            <!-- System Health -->
             <div class="card">
-                <h2>💚 System Health</h2>
+                <h2><i class="fas fa-heartbeat"></i> System Health</h2>
                 <div id="systemHealth" class="loading">Checking...</div>
             </div>
 
-            <!-- Environment Variables -->
             <div class="card">
-                <h2>🔑 Environment Keys</h2>
+                <h2><i class="fas fa-key"></i> Environment Keys</h2>
                 <div id="envKeys" class="loading">Checking...</div>
             </div>
 
-            <!-- Database Status -->
             <div class="card">
-                <h2>🗄️ Database Connection</h2>
+                <h2><i class="fas fa-database"></i> Database</h2>
                 <div id="dbStatus" class="loading">Checking...</div>
             </div>
 
-            <!-- API Status -->
             <div class="card">
-                <h2>🔌 API Status</h2>
+                <h2><i class="fas fa-plug"></i> API Status</h2>
                 <div id="apiStatus" class="loading">Checking...</div>
             </div>
 
-            <!-- Recent Errors -->
             <div class="card full-width">
-                <h2>⚠️ Recent Errors</h2>
+                <h2><i class="fas fa-exclamation-triangle"></i> Recent Errors</h2>
                 <div id="errors" class="loading">Loading...</div>
             </div>
         </div>
@@ -228,16 +247,16 @@
             const data = await fetchJSON(`${API_BASE}/health`);
             
             if (data.error) {
-                div.innerHTML = `<span class="status-badge error">Offline</span><br><small>${data.error}</small>`;
+                div.innerHTML = `<span class="status-badge error">Offline</span><br><br><small>${data.error}</small>`;
             } else {
                 div.innerHTML = `
                     <span class="status-badge ok">Online</span>
                     <div class="metric">
-                        <span class="metric-label">Status:</span>
+                        <span class="metric-label">Status</span>
                         <span class="metric-value">${data.status || 'OK'}</span>
                     </div>
                     <div class="metric">
-                        <span class="metric-label">Timestamp:</span>
+                        <span class="metric-label">Timestamp</span>
                         <span class="metric-value">${new Date(data.timestamp).toLocaleString()}</span>
                     </div>
                 `;
@@ -249,14 +268,14 @@
             const data = await fetchJSON(`${API_BASE}/status/env`);
             
             if (data.error) {
-                div.innerHTML = `<span class="status-badge error">Error</span><br><small>${data.error}</small>`;
+                div.innerHTML = `<span class="status-badge error">Error</span><br><br><small>${data.error}</small>`;
             } else {
                 const keys = data.keys || [];
                 if (keys.length === 0) {
-                    div.innerHTML = '<span class="status-badge warning">No keys found</span>';
+                    div.innerHTML = '<div class="empty-state">No keys configured</div>';
                 } else {
                     const html = keys.map(key => `
-                        <div class="key-item ${key.set ? 'set' : 'missing'}">
+                        <div class="key-item">
                             <span class="key-name">${key.name}</span>
                             <span class="status-badge ${key.set ? 'ok' : 'error'}">${key.set ? 'Set' : 'Missing'}</span>
                         </div>
@@ -271,12 +290,12 @@
             const data = await fetchJSON(`${API_BASE}/status/database`);
             
             if (data.error) {
-                div.innerHTML = `<span class="status-badge error">Error</span><br><small>${data.error}</small>`;
+                div.innerHTML = `<span class="status-badge error">Error</span><br><br><small>${data.error}</small>`;
             } else {
                 const status = data.connected ? 'ok' : 'error';
                 div.innerHTML = `
                     <span class="status-badge ${status}">${data.connected ? 'Connected' : 'Disconnected'}</span>
-                    ${data.message ? `<br><small>${data.message}</small>` : ''}
+                    ${data.message ? `<br><br><small>${data.message}</small>` : ''}
                 `;
             }
         }
@@ -286,15 +305,20 @@
             const data = await fetchJSON(`${API_BASE}/status/api`);
             
             if (data.error) {
-                div.innerHTML = `<span class="status-badge error">Error</span><br><small>${data.error}</small>`;
+                div.innerHTML = `<span class="status-badge error">Error</span><br><br><small>${data.error}</small>`;
             } else {
-                const html = Object.entries(data.apis || {}).map(([name, status]) => `
-                    <div class="metric">
-                        <span class="metric-label">${name}:</span>
-                        <span class="status-badge ${status.valid ? 'ok' : 'error'}">${status.valid ? 'Valid' : 'Invalid'}</span>
-                    </div>
-                `).join('');
-                div.innerHTML = html || '<span class="status-badge warning">No API checks available</span>';
+                const apis = data.apis || {};
+                if (Object.keys(apis).length === 0) {
+                    div.innerHTML = '<div class="empty-state">No API checks available</div>';
+                } else {
+                    const html = Object.entries(apis).map(([name, status]) => `
+                        <div class="metric">
+                            <span class="metric-label">${name}</span>
+                            <span class="status-badge ${status.valid ? 'ok' : 'error'}">${status.valid ? 'Valid' : 'Invalid'}</span>
+                        </div>
+                    `).join('');
+                    div.innerHTML = html;
+                }
             }
         }
 
@@ -303,11 +327,11 @@
             const data = await fetchJSON(`${API_BASE}/debug/errors`);
             
             if (data.error) {
-                div.innerHTML = `<span class="status-badge error">Error loading</span><br><small>${data.error}</small>`;
+                div.innerHTML = `<span class="status-badge error">Error loading</span><br><br><small>${data.error}</small>`;
             } else {
                 const errors = data.recentErrors || [];
                 if (errors.length === 0) {
-                    div.innerHTML = '<span class="status-badge ok">No recent errors</span>';
+                    div.innerHTML = '<div class="empty-state">No recent errors</div>';
                 } else {
                     const html = errors.map(err => `
                         <div class="error-item">
@@ -337,4 +361,3 @@
     </script>
 </body>
 </html>
-
