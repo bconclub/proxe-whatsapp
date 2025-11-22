@@ -32,15 +32,20 @@ jobs:
             # Create parent directory if it doesn't exist
             mkdir -p /var/www
             
-            # Git operations
+            # Git operations - always ensure clean state
             if [ -d "/var/www/whatsapp-proxe/.git" ]; then
               echo "📥 Pulling latest changes..."
               cd /var/www/whatsapp-proxe
-              git pull origin main || {
-                echo "⚠️  Git pull failed, trying to reset..."
-                git fetch origin
+              # Discard any local changes and ensure clean state
+              git fetch origin
+              git reset --hard origin/main
+              git clean -fd
+              # Verify no conflict markers exist
+              if grep -r "<<<<<<< " . --include="*.js" --include="*.ts" 2>/dev/null; then
+                echo "⚠️  Found conflict markers! Cleaning up..."
                 git reset --hard origin/main
-              }
+                git clean -fd
+              fi
             else
               # If directory exists but isn't a git repo, remove it
               if [ -d "/var/www/whatsapp-proxe" ]; then
