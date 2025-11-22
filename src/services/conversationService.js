@@ -71,7 +71,6 @@ export async function addToHistory(leadId, message, role = 'user', messageType =
   }
 }
 
-<<<<<<< Updated upstream
 /**
  * Get recent messages for a lead
  * @param {string} leadId - Lead UUID

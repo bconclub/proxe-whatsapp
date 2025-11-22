@@ -100,7 +100,6 @@ export function extractKeywords(message) {
   return [...new Set(keywords)];
 }
 
-<<<<<<< Updated upstream
 /**
  * Query messages for analytics/retraining
  * @param {object} filters - Filter options
