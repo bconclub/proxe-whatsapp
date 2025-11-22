@@ -246,7 +246,7 @@
             </div>
 
             <div class="card">
-                <h2><i class="fas fa-tachometer-alt"></i> Response Times</h2>
+                <h2><i class="fas fa-tachometer-alt"></i> Input to Output Gap</h2>
                 <div id="metrics" class="loading">Checking...</div>
             </div>
 
@@ -402,7 +402,7 @@
 
                 if (totalRequests === 0) {
                     div.innerHTML = `
-                        <div class="empty-state">No response time data available</div>
+                        <div class="empty-state">No timing data available</div>
                         <div class="metric">
                             <span class="metric-label">Sample</span>
                             <span class="metric-value">Last ${sampleSize} responses</span>
@@ -413,27 +413,30 @@
                         </div>
                     `;
                 } else {
-                    // Color code based on average response time
+                    // Color code based on average gap time (input received to output sent)
                     let avgBadgeClass = 'ok';
-                    if (avgTime > 5000) avgBadgeClass = 'error';
-                    else if (avgTime > 3000) avgBadgeClass = 'warning';
+                    if (avgTime > 10000) avgBadgeClass = 'error'; // > 10s is slow
+                    else if (avgTime > 5000) avgBadgeClass = 'warning'; // > 5s is moderate
 
                     div.innerHTML = `
                         <div class="metric">
-                            <span class="metric-label">Average</span>
+                            <span class="metric-label">Average Gap</span>
                             <span class="status-badge ${avgBadgeClass}">${formatTime(avgTime)}</span>
                         </div>
                         <div class="metric">
-                            <span class="metric-label">Min</span>
+                            <span class="metric-label">Fastest</span>
                             <span class="metric-value">${formatTime(minTime)}</span>
                         </div>
                         <div class="metric">
-                            <span class="metric-label">Max</span>
+                            <span class="metric-label">Slowest</span>
                             <span class="metric-value">${formatTime(maxTime)}</span>
                         </div>
                         <div class="metric">
                             <span class="metric-label">Sample</span>
                             <span class="metric-value">${totalRequests}/${sampleSize}</span>
+                        </div>
+                        <div class="metric" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #e0e0e0;">
+                            <span class="metric-label" style="font-size: 11px; color: #666;">Time from input received to output sent</span>
                         </div>
                     `;
                 }

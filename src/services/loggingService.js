@@ -43,6 +43,7 @@ export async function storeConversationLog(logData) {
       const analyticsMetadata = {
         tokens_used: logData.tokensUsed || 0,
         response_time_ms: logData.responseTime || 0,
+        input_to_output_gap_ms: logData.inputToOutputGap || logData.metadata?.input_to_output_gap_ms || 0,
         response_type: logData.responseType || 'text_only',
         ...(logData.metadata || {})
       };
@@ -199,18 +200,20 @@ export async function getAverageResponseTimes() {
 
     logger.info(`Found ${messages?.length || 0} agent messages for response time calculation`);
 
-    // Extract response times from metadata
+    // Extract input-to-output gap times from metadata (preferred) or fallback to response_time_ms
     const responseTimes = (messages || [])
       .map(msg => {
         const metadata = msg.metadata || {};
-        const responseTime = metadata.response_time_ms;
+        // Prefer input_to_output_gap_ms (time from input received to output sent)
+        // Fallback to response_time_ms (processing time only) if gap not available
+        const gapTime = metadata.input_to_output_gap_ms || metadata.response_time_ms;
         
         // Log for debugging
-        if (!responseTime) {
-          logger.debug(`Message ${msg.created_at} has no response_time_ms in metadata:`, JSON.stringify(metadata));
+        if (!gapTime) {
+          logger.debug(`Message ${msg.created_at} has no input_to_output_gap_ms or response_time_ms in metadata:`, JSON.stringify(metadata));
         }
         
-        return responseTime;
+        return gapTime;
       })
       .filter(time => typeof time === 'number' && time > 0);
 

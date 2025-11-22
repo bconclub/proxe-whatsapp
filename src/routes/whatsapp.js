@@ -28,6 +28,7 @@ const messageSchema = z.object({
 router.post('/message', async (req, res, next) => {
   // Wrap everything in try-catch to ensure errors are caught
   try {
+    const inputReceivedAt = Date.now(); // Track when input is received
     const startTime = Date.now();
     
     // Ensure response object is available
@@ -129,9 +130,11 @@ router.post('/message', async (req, res, next) => {
       conversationHistory = []; // Continue with empty history
     }
 
-    // Step 6: Add user message to messages table
+    // Step 6: Add user message to messages table with input timestamp
     try {
-      await addToHistory(lead.id, message, 'user', 'text');
+      await addToHistory(lead.id, message, 'user', 'text', {
+        input_received_at: inputReceivedAt
+      });
     } catch (error) {
       console.error('=== ERROR in addToHistory (user) ===', error);
       logger.error('Error adding user message to history:', error);
@@ -163,13 +166,21 @@ router.post('/message', async (req, res, next) => {
       });
     }
 
-    // Step 9: Add assistant response to messages table
-    await addToHistory(lead.id, aiResponse.rawResponse, 'assistant', 'text');
+    // Step 9: Calculate time gap between input received and output sent
+    const outputSentAt = Date.now();
+    const inputToOutputGap = outputSentAt - inputReceivedAt; // Total time from input to output
 
-    // Step 10: Increment session message count again
+    // Step 10: Add assistant response to messages table
+    await addToHistory(lead.id, aiResponse.rawResponse, 'assistant', 'text', {
+      input_received_at: inputReceivedAt,
+      output_sent_at: outputSentAt,
+      input_to_output_gap_ms: inputToOutputGap
+    });
+
+    // Step 11: Increment session message count again
     await incrementSessionMessageCount(whatsappSession.id);
 
-    // Step 11: Format response for WhatsApp
+    // Step 12: Format response for WhatsApp
     const formattedResponse = formatWhatsAppResponse(
       aiResponse.rawResponse,
       aiResponse.responseType,
@@ -183,7 +194,7 @@ router.post('/message', async (req, res, next) => {
       }
     );
 
-    // Step 12: Store conversation log (analytics in messages metadata)
+    // Step 13: Store conversation log (analytics in messages metadata)
     await storeConversationLog({
       customerId: lead.id, // For backward compatibility
       leadId: lead.id,
@@ -192,11 +203,14 @@ router.post('/message', async (req, res, next) => {
       responseType: aiResponse.responseType,
       tokensUsed: aiResponse.tokensUsed,
       responseTime: Date.now() - startTime,
+      inputToOutputGap: inputToOutputGap, // Add the gap here too
       metadata: {
         buttons: aiResponse.buttons,
         urgency: aiResponse.urgency,
         nextAction: aiResponse.nextAction,
-        brand: brand
+        brand: brand,
+        input_received_at: inputReceivedAt,
+        output_sent_at: outputSentAt
       }
     });
 
