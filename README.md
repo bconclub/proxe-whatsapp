@@ -2,6 +2,8 @@
 
 Intelligence layer that transforms raw customer messages into contextual, personalized responses using Claude AI and Supabase.
 
+> **📖 For complete architecture documentation, see [`Whatsapp PROXe.md`](./Whatsapp%20PROXe.md) - the single source of truth for this project.**
+
 ## Architecture
 
 ```
@@ -46,7 +48,7 @@ n8n Webhook → Backend Service → Supabase → Claude API → JSON Response �
 
 3. **Set up Supabase database:**
    - Go to your Supabase project SQL Editor
-   - Run `src/database/schema.sql` to create all tables
+   - Follow the database schema documentation in `Whatsapp PROXe.md`
 
 4. **Start the server:**
    ```bash
@@ -138,13 +140,7 @@ Aggregate logs for model retraining (open integration).
 
 ## Database Schema
 
-The database includes:
-- `customers` - Customer profiles and metadata
-- `conversation_history` - Message history
-- `conversation_logs` - Analytics and training data
-- `knowledge_base` - Company knowledge with vector embeddings
-
-See `src/database/schema.sql` for full schema.
+The database uses a unified multi-channel schema. See [`Whatsapp PROXe.md`](./Whatsapp%20PROXe.md) for complete database schema documentation.
 
 ## n8n Integration
 
