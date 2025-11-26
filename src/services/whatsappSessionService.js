@@ -1,17 +1,20 @@
 import { supabase } from '../config/supabase.js';
 import { logger } from '../utils/logger.js';
+import { normalizePhoneNumber } from './customerService.js';
 
 /**
  * Get or create WhatsApp session
  * @param {string} externalSessionId - WhatsApp session identifier (phone number)
+ *   - WhatsApp format: "919876543210" (country code + number, no formatting)
  * @param {string} brand - Brand name ('proxe' or 'windchasers')
  * @param {object} sessionData - Optional session data (name, phone, etc.)
  * @returns {Promise<object>} WhatsApp session object
  */
 export async function getOrCreateWhatsAppSession(externalSessionId, brand = 'proxe', sessionData = {}) {
   try {
-    // Normalize phone number for deduplication
-    const normalizedPhone = externalSessionId.replace(/\D/g, '');
+    // Normalize phone number for deduplication (consistent with all_leads normalization)
+    // This ensures web and WhatsApp numbers can be matched correctly
+    const normalizedPhone = normalizePhoneNumber(externalSessionId);
     
     // Try to find existing session
     // Note: Check what columns actually exist - might be 'chat_session_id' or 'session_id' instead of 'external_session_id'
@@ -33,8 +36,8 @@ export async function getOrCreateWhatsAppSession(externalSessionId, brand = 'pro
       brand: brand,
       customer_name: sessionData.profileName || sessionData.name || null,
       customer_email: sessionData.email || null,
-      customer_phone: externalSessionId,
-      customer_phone_normalized: normalizedPhone,
+      customer_phone: externalSessionId, // Store original format as-is
+      customer_phone_normalized: normalizedPhone, // Normalized: digits only for matching
       message_count: 0,
       last_message_at: new Date().toISOString(),
       channel_data: sessionData.channelData || {},
