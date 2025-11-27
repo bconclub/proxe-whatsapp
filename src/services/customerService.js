@@ -2,6 +2,19 @@ import { supabase } from '../config/supabase.js';
 import { logger } from '../utils/logger.js';
 
 /**
+ * Safely convert a value to a trimmed string
+ * Handles null, undefined, numbers, and other types gracefully
+ * 
+ * @param {any} value - Value to convert to string
+ * @returns {string} Trimmed string (empty string if value is null/undefined)
+ */
+function safeString(value) {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value.trim();
+  return String(value).trim();
+}
+
+/**
  * Normalize phone number for matching and deduplication
  * Returns the last 10 digits of the phone number (removes country code)
  * 
@@ -15,13 +28,16 @@ import { logger } from '../utils/logger.js';
 function normalizePhone(phone) {
   if (!phone) return null;
   
-  // Remove all non-digits
-  const digits = phone.replace(/\D/g, '');
+  // Convert to string and remove all non-digits
+  const phoneStr = safeString(phone);
+  if (!phoneStr) return null;
+  
+  const digits = phoneStr.replace(/\D/g, '');
   
   if (!digits || digits.length < 10) return null;
   
-  // Return last 10 digits (handles both 9876543210 and 919876543210)
-  return digits.slice(-10);
+  // Return last 10 digits as string (handles both 9876543210 and 919876543210)
+  return String(digits.slice(-10));
 }
 
 /**
@@ -288,12 +304,17 @@ export async function getCustomerFullContext(phone, brand = 'proxe') {
                 unifiedContext.booking_time || webContext.booking_time)
     };
 
-    // Extract user inputs from web conversations
-    const userInputs = webContext.user_inputs 
+    // Extract user inputs from web conversations and ensure they're safe strings
+    const rawUserInputs = webContext.user_inputs 
       || webContext.inputs 
       || webContext.past_interests 
       || webContext.interests 
       || [];
+    
+    // Convert all user inputs to safe strings
+    const userInputs = Array.isArray(rawUserInputs) 
+      ? rawUserInputs.map(input => safeString(input)).filter(input => input.length > 0)
+      : [];
     
     // Extract full web conversations if available
     const webConversations = webContext.conversations 
@@ -304,9 +325,9 @@ export async function getCustomerFullContext(phone, brand = 'proxe') {
     logger.info(`Retrieved full context for phone ${phone}: booking exists=${booking.exists}, user inputs=${userInputs.length}`);
 
     return {
-      conversationSummary,
+      conversationSummary: safeString(conversationSummary),
       booking: booking.exists ? booking : null,
-      userInputs: Array.isArray(userInputs) ? userInputs : [],
+      userInputs,
       webConversations
     };
   } catch (error) {
@@ -351,8 +372,8 @@ export async function buildCustomerContext(sessionId, brand = 'proxe') {
     const conversationPhase = determinePhase(messages || []);
 
     // Combine web conversation summary with WhatsApp summary
-    const webSummary = fullContext.conversationSummary || '';
-    const whatsappSummary = session?.conversation_summary || generateSummary(messages || []);
+    const webSummary = safeString(fullContext.conversationSummary);
+    const whatsappSummary = safeString(session?.conversation_summary || generateSummary(messages || []));
     const combinedSummary = webSummary 
       ? (whatsappSummary !== 'New customer, no previous conversation.' 
           ? `Web: ${webSummary}\nWhatsApp: ${whatsappSummary}` 
@@ -360,19 +381,23 @@ export async function buildCustomerContext(sessionId, brand = 'proxe') {
       : whatsappSummary;
 
     // Merge web user inputs with WhatsApp interests
+    // Use safeString to handle any non-string values safely
     const allInterests = [
       ...(fullContext.userInputs || []),
       ...previousInterests
-    ].filter((value, index, self) => 
-      self.indexOf(value) === index && value && value.trim()
-    ).slice(0, 10);
+    ]
+      .map(value => safeString(value)) // Convert all values to safe strings
+      .filter((value, index, self) => 
+        self.indexOf(value) === index && value // Remove duplicates and empty strings
+      )
+      .slice(0, 10);
 
-    // Build enriched context object
+    // Build enriched context object with safe string handling
     const context = {
       customerId: lead.id,
       leadId: lead.id, // Add leadId for clarity
-      name: lead.customer_name || session?.customer_name,
-      phone: lead.phone,
+      name: safeString(lead.customer_name || session?.customer_name),
+      phone: safeString(lead.phone),
       brand: lead.brand,
       firstTouchpoint: lead.first_touchpoint,
       lastTouchpoint: lead.last_touchpoint,
@@ -382,22 +407,22 @@ export async function buildCustomerContext(sessionId, brand = 'proxe') {
       conversationPhase,
       previousInterests: allInterests,
       budget: lead.unified_context?.budget || null,
-      conversationSummary: combinedSummary,
+      conversationSummary: safeString(combinedSummary),
       lastMessages: (messages || []).slice(0, 10).reverse().map(msg => ({
         role: msg.sender === 'customer' ? 'user' : 'assistant',
-        content: msg.content,
+        content: safeString(msg.content),
         timestamp: msg.created_at
       })),
       tags: lead.unified_context?.tags || [],
       metadata: lead.unified_context || {},
       // Enhanced context from unified_context
-      webConversationSummary: fullContext.conversationSummary,
+      webConversationSummary: safeString(fullContext.conversationSummary),
       booking: fullContext.booking,
       webUserInputs: fullContext.userInputs,
       webConversations: fullContext.webConversations,
       sessionData: session ? {
         sessionId: session.id,
-        conversationStatus: session.conversation_status || 'active', // Use conversation_status instead of session_status
+        conversationStatus: safeString(session.conversation_status || 'active'),
         lastMessageAt: session.last_message_at
       } : null
     };
@@ -416,8 +441,15 @@ function extractInterests(messages) {
   const interests = [];
   const keywords = ['property', 'properties', 'sqft', 'budget', 'location', 'area', 'rent'];
   
+  if (!messages || !Array.isArray(messages)) {
+    return interests;
+  }
+  
   messages.forEach(msg => {
-    const content = msg.content?.toLowerCase() || '';
+    // Use safeString to ensure content is a string before calling toLowerCase
+    const content = safeString(msg.content).toLowerCase();
+    if (!content) return;
+    
     keywords.forEach(keyword => {
       if (content.includes(keyword)) {
         const context = extractContext(content, keyword);
@@ -432,10 +464,16 @@ function extractInterests(messages) {
 }
 
 function extractContext(text, keyword) {
-  const index = text.indexOf(keyword);
+  // Ensure text is a string before processing
+  const safeText = safeString(text);
+  if (!safeText) return '';
+  
+  const index = safeText.indexOf(keyword);
+  if (index === -1) return '';
+  
   const start = Math.max(0, index - 20);
-  const end = Math.min(text.length, index + keyword.length + 20);
-  return text.substring(start, end).trim();
+  const end = Math.min(safeText.length, index + keyword.length + 20);
+  return safeText.substring(start, end);
 }
 
 /**
@@ -453,13 +491,18 @@ function determinePhase(messages) {
  * Generate conversation summary
  */
 function generateSummary(messages) {
-  if (messages.length === 0) {
+  if (!messages || messages.length === 0) {
     return 'New customer, no previous conversation.';
   }
 
   const recentMessages = messages.slice(0, 5).reverse();
   const summary = recentMessages
-    .map(msg => `${msg.sender}: ${msg.content}`)
+    .map(msg => {
+      const sender = safeString(msg.sender || 'unknown');
+      const content = safeString(msg.content || '');
+      return `${sender}: ${content}`;
+    })
+    .filter(line => line.length > 0) // Remove empty lines
     .join(' | ');
 
   return summary.length > 500 ? summary.substring(0, 500) + '...' : summary;
