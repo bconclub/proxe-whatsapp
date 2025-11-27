@@ -602,23 +602,176 @@ function determinePhase(messages) {
 }
 
 /**
- * Generate conversation summary
+ * Generate conversation summary from messages
+ * Extracts key information instead of just concatenating messages
  */
 export function generateSummary(messages) {
   if (!messages || messages.length === 0) {
     return 'New customer, no previous conversation.';
   }
 
-  const recentMessages = messages.slice(0, 5).reverse();
-  const summary = recentMessages
-    .map(msg => {
-      const sender = safeString(msg.sender || 'unknown');
-      const content = safeString(msg.content || '');
-      return `${sender}: ${content}`;
-    })
-    .filter(line => line.length > 0) // Remove empty lines
-    .join(' | ');
-
-  return summary.length > 500 ? summary.substring(0, 500) + '...' : summary;
+  const recentMessages = messages.slice(0, 10); // Get last 10 messages for better context
+  // Handle both standard and "unknown" sender formats
+  const customerMessages = recentMessages.filter(msg => 
+    msg.sender === 'customer' || 
+    msg.role === 'user' ||
+    (msg.sender === 'unknown' && msg.content && !msg.content.includes('PROXe') && !msg.content.includes('starts at'))
+  );
+  const assistantMessages = recentMessages.filter(msg => 
+    msg.sender === 'agent' || 
+    msg.role === 'assistant' ||
+    (msg.sender === 'unknown' && msg.content && (msg.content.includes('PROXe') || msg.content.includes('starts at') || msg.content.includes('demo') || msg.content.includes('booked')))
+  );
+  
+  // Extract key information
+  const keyPoints = [];
+  
+  // Extract customer questions/topics
+  const customerTopics = [];
+  customerMessages.forEach(msg => {
+    const content = safeString(msg.content).toLowerCase();
+    
+    // Extract pricing questions
+    if (content.match(/price|cost|pricing|how much|₹|rupee|fee|charge/)) {
+      customerTopics.push('Pricing inquiry');
+    }
+    
+    // Extract booking/scheduling
+    if (content.match(/book|schedule|appointment|call|demo|meeting|tomorrow|today|time/)) {
+      customerTopics.push('Booking/scheduling');
+    }
+    
+    // Extract product/service questions
+    if (content.match(/what|how|explain|tell me|information|details|features|about/)) {
+      customerTopics.push('Product inquiry');
+    }
+  });
+  
+  // Extract key information from assistant responses
+  assistantMessages.forEach(msg => {
+    const content = safeString(msg.content);
+    
+    // Extract pricing mentioned (more comprehensive pattern)
+    if (content.match(/₹|rupee|pricing|starts? at|cost|monthly|per month/i)) {
+      const pricePatterns = [
+        /₹\s*[\d,]+/g,
+        /\d+[\d,]*\s*rupee/i,
+        /\d+[\d,]*\s*\/month/i,
+        /\d+[\d,]*\s*per month/i,
+        /starts? at\s*[₹\d,]+/i
+      ];
+      
+      for (const pattern of pricePatterns) {
+        const matches = content.match(pattern);
+        if (matches && matches.length > 0) {
+          const priceText = matches[0].trim();
+          if (!keyPoints.some(p => p.toLowerCase().includes('pricing') || p.includes('₹'))) {
+            keyPoints.push(`Pricing: ${priceText}`);
+            break;
+          }
+        }
+      }
+    }
+    
+    // Extract booking/demo information (more comprehensive patterns)
+    // Pattern 1: "demo call booked for tomorrow at 6 PM"
+    const demoBookedPattern = /(?:demo|call).*?(?:booked|scheduled|you've got).*?(?:tomorrow|today).*?at\s*\d+\s*(?:PM|AM|pm|am)/i;
+    let demoMatch = content.match(demoBookedPattern);
+    if (demoMatch) {
+      const bookingText = demoMatch[0].trim();
+      if (!keyPoints.some(p => p.toLowerCase().includes('demo') || p.toLowerCase().includes('call') || p.toLowerCase().includes('book'))) {
+        keyPoints.push(`Demo call booked: ${bookingText}`);
+      }
+    }
+    
+    // Pattern 2: "tomorrow at X PM" (standalone)
+    if (!demoMatch) {
+      const timePattern = content.match(/(?:tomorrow|today).*?at\s*\d+\s*(?:PM|AM|pm|am)/i);
+      if (timePattern && !keyPoints.some(p => p.toLowerCase().includes('tomorrow') || p.toLowerCase().includes('today'))) {
+        // Check if context mentions demo or call
+        const hasDemoContext = content.toLowerCase().includes('demo') || content.toLowerCase().includes('call');
+        if (hasDemoContext) {
+          keyPoints.push(`Demo call scheduled: ${timePattern[0]}`);
+        } else {
+          keyPoints.push(`Scheduled: ${timePattern[0]}`);
+        }
+      }
+    }
+    
+    // Pattern 3: "booked for tomorrow" or "scheduled for tomorrow"
+    if (!demoMatch) {
+      const bookedForPattern = content.match(/(?:booked|scheduled).*?for.*?(?:tomorrow|today)/i);
+      if (bookedForPattern && !keyPoints.some(p => p.toLowerCase().includes('book') || p.toLowerCase().includes('schedule'))) {
+        keyPoints.push(`Booking: ${bookedForPattern[0]}`);
+      }
+    }
+  });
+  
+  // Build summary with prioritized information
+  // Prioritize: 1) Bookings/Demos, 2) Pricing, 3) Topics
+  const summaryParts = [];
+  
+  // First, add booking/demo info if present
+  const bookingInfo = keyPoints.filter(p => 
+    p.toLowerCase().includes('demo') || 
+    p.toLowerCase().includes('call') || 
+    p.toLowerCase().includes('book') || 
+    p.toLowerCase().includes('schedule')
+  );
+  if (bookingInfo.length > 0) {
+    summaryParts.push(...bookingInfo);
+  }
+  
+  // Then add pricing info
+  const pricingInfo = keyPoints.filter(p => 
+    p.toLowerCase().includes('pricing') || 
+    p.includes('₹')
+  );
+  if (pricingInfo.length > 0) {
+    summaryParts.push(...pricingInfo);
+  }
+  
+  // Add customer topics
+  if (customerTopics.length > 0) {
+    const uniqueTopics = [...new Set(customerTopics)];
+    summaryParts.push(`Customer inquired about: ${uniqueTopics.join(', ')}`);
+  }
+  
+  // Add any other key points not already included
+  const otherPoints = keyPoints.filter(p => 
+    !summaryParts.includes(p) && 
+    !p.toLowerCase().includes('demo') && 
+    !p.toLowerCase().includes('call') && 
+    !p.toLowerCase().includes('pricing') &&
+    !p.includes('₹')
+  );
+  if (otherPoints.length > 0) {
+    summaryParts.push(...otherPoints);
+  }
+  
+  // If we have key points, create a summary
+  if (summaryParts.length > 0) {
+    const summary = summaryParts.join('. ');
+    // Limit to 300 chars for readability
+    return summary.length > 300 ? summary.substring(0, 300).trim() + '...' : summary;
+  }
+  
+  // Fallback: Extract main topic from last customer message
+  if (customerMessages.length > 0) {
+    const lastCustomerMsg = safeString(customerMessages[customerMessages.length - 1].content);
+    if (lastCustomerMsg.length > 0 && lastCustomerMsg.length < 150) {
+      // Use the message if it's reasonably short
+      return lastCustomerMsg;
+    } else if (lastCustomerMsg.length > 0) {
+      // Truncate to first sentence or 100 chars
+      const firstSentence = lastCustomerMsg.split(/[.!?]/)[0].trim();
+      return firstSentence.length > 100 
+        ? firstSentence.substring(0, 100) + '...' 
+        : firstSentence;
+    }
+  }
+  
+  // Final fallback: Simple message count
+  return `${messages.length} message${messages.length > 1 ? 's' : ''} exchanged.`;
 }
 
