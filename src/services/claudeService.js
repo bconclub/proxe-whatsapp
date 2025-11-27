@@ -121,6 +121,11 @@ function buildCustomerContextNote(context) {
     parts.push(`Web conversation summary: ${context.webConversationSummary}`);
   }
   
+  // Include user input summary if available
+  if (context.userInputSummary) {
+    parts.push(`User input summary: ${context.userInputSummary}`);
+  }
+  
   // Include booking information if exists
   if (context.booking && context.booking.exists) {
     const bookingInfo = [];
@@ -141,6 +146,18 @@ function buildCustomerContextNote(context) {
   // Include web user inputs/interests
   if (context.webUserInputs && context.webUserInputs.length > 0) {
     parts.push(`Previous interests/questions from web: ${context.webUserInputs.join(', ')}`);
+  }
+  
+  // Include channel data if available
+  if (context.channelData && typeof context.channelData === 'object' && Object.keys(context.channelData).length > 0) {
+    try {
+      const channelDataStr = JSON.stringify(context.channelData);
+      if (channelDataStr && channelDataStr !== '{}') {
+        parts.push(`Channel data: ${channelDataStr}`);
+      }
+    } catch (error) {
+      // Skip if channel data can't be stringified
+    }
   }
   
   // Include combined interests (from web and WhatsApp)

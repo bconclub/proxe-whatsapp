@@ -2,7 +2,7 @@
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -95,7 +95,21 @@ app.use((req, res, next) => {
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  // Read version from package.json
+  let version = 'unknown';
+  try {
+    const packagePath = path.join(__dirname, '..', 'package.json');
+    const packageData = JSON.parse(readFileSync(packagePath, 'utf8'));
+    version = packageData.version || 'unknown';
+  } catch (error) {
+    logger.warn('Could not read version from package.json:', error.message);
+  }
+  
+  res.json({ 
+    status: 'ok', 
+    version,
+    timestamp: new Date().toISOString() 
+  });
 });
 
 // Status page

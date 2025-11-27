@@ -248,9 +248,11 @@ export async function getCustomerFullContext(phone, brand = 'proxe') {
       logger.warn(`Invalid phone number for full context lookup: ${phone}`);
       return {
         conversationSummary: null,
+        userInputSummary: null,
         booking: null,
         userInputs: [],
-        webConversations: null
+        webConversations: null,
+        channelData: null
       };
     }
     
@@ -280,19 +282,30 @@ export async function getCustomerFullContext(phone, brand = 'proxe') {
     if (!lead) {
       return {
         conversationSummary: null,
+        userInputSummary: null,
         booking: null,
         userInputs: [],
-        webConversations: null
+        webConversations: null,
+        channelData: null
       };
     }
 
     const unifiedContext = lead.unified_context || {};
     const webContext = unifiedContext.web || {};
+    const whatsappContext = unifiedContext.whatsapp || {};
     
-    // Extract web conversation summary
+    // Extract conversation summary from web or WhatsApp
     const conversationSummary = webContext.conversation_summary 
       || webContext.summary 
-      || webContext.last_conversation_summary 
+      || webContext.last_conversation_summary
+      || whatsappContext.conversation_summary
+      || whatsappContext.summary
+      || null;
+
+    // Extract user input summary (from web or WhatsApp)
+    const userInputSummary = webContext.user_input_summary
+      || whatsappContext.user_input_summary
+      || unifiedContext.user_input_summary
       || null;
 
     // Extract booking information
@@ -304,14 +317,21 @@ export async function getCustomerFullContext(phone, brand = 'proxe') {
                 unifiedContext.booking_time || webContext.booking_time)
     };
 
-    // Extract user inputs from web conversations and ensure they're safe strings
-    const rawUserInputs = webContext.user_inputs 
+    // Extract user inputs from web and WhatsApp conversations
+    const webUserInputs = webContext.user_inputs 
       || webContext.inputs 
       || webContext.past_interests 
       || webContext.interests 
       || [];
     
-    // Convert all user inputs to safe strings
+    const whatsappUserInputs = whatsappContext.user_inputs
+      || whatsappContext.inputs
+      || whatsappContext.past_interests
+      || whatsappContext.interests
+      || [];
+    
+    // Combine and convert all user inputs to safe strings
+    const rawUserInputs = [...webUserInputs, ...whatsappUserInputs];
     const userInputs = Array.isArray(rawUserInputs) 
       ? rawUserInputs.map(input => safeString(input)).filter(input => input.length > 0)
       : [];
@@ -322,13 +342,21 @@ export async function getCustomerFullContext(phone, brand = 'proxe') {
       || webContext.chat_history 
       || null;
 
-    logger.info(`Retrieved full context for phone ${phone}: booking exists=${booking.exists}, user inputs=${userInputs.length}`);
+    // Extract channel data from unified_context
+    const channelData = unifiedContext.channel_data
+      || webContext.channel_data
+      || whatsappContext.channel_data
+      || null;
+
+    logger.info(`Retrieved full context for phone ${phone}: booking exists=${booking.exists}, user inputs=${userInputs.length}, has channel data=${!!channelData}`);
 
     return {
       conversationSummary: safeString(conversationSummary),
+      userInputSummary: safeString(userInputSummary),
       booking: booking.exists ? booking : null,
       userInputs,
-      webConversations
+      webConversations,
+      channelData
     };
   } catch (error) {
     logger.error('Error in getCustomerFullContext:', error);
@@ -417,13 +445,16 @@ export async function buildCustomerContext(sessionId, brand = 'proxe') {
       metadata: lead.unified_context || {},
       // Enhanced context from unified_context
       webConversationSummary: safeString(fullContext.conversationSummary),
+      userInputSummary: safeString(fullContext.userInputSummary),
       booking: fullContext.booking,
       webUserInputs: fullContext.userInputs,
       webConversations: fullContext.webConversations,
+      channelData: fullContext.channelData || session?.channel_data || null,
       sessionData: session ? {
         sessionId: session.id,
         conversationStatus: safeString(session.conversation_status || 'active'),
-        lastMessageAt: session.last_message_at
+        lastMessageAt: session.last_message_at,
+        channelData: session.channel_data || null
       } : null
     };
 

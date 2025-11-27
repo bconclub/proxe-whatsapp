@@ -282,6 +282,10 @@
                 div.innerHTML = `
                     <span class="status-badge ok">Online</span>
                     <div class="metric">
+                        <span class="metric-label">Version</span>
+                        <span class="metric-value">v${data.version || 'unknown'}</span>
+                    </div>
+                    <div class="metric">
                         <span class="metric-label">Status</span>
                         <span class="metric-value">${data.status || 'OK'}</span>
                     </div>

@@ -1,6 +1,6 @@
 {
   "name": "whatsapp-proxe-backend",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "WhatsApp PROXe Backend Service - AI-powered message processing and response generation",
   "main": "src/server.js",
   "type": "module",
@@ -10,7 +10,10 @@
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
     "migrate": "node src/database/migrate.js",
-    "populate-kb": "node scripts/populate-knowledge-base.js"
+    "populate-kb": "node scripts/populate-knowledge-base.js",
+    "version:patch": "npm version patch --no-git-tag-version",
+    "version:minor": "npm version minor --no-git-tag-version",
+    "version:major": "npm version major --no-git-tag-version"
   },
   "keywords": [
     "whatsapp",
