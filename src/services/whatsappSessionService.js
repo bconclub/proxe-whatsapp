@@ -12,9 +12,13 @@ import { normalizePhoneNumber } from './customerService.js';
  */
 export async function getOrCreateWhatsAppSession(externalSessionId, brand = 'proxe', sessionData = {}) {
   try {
-    // Normalize phone number for deduplication (consistent with all_leads normalization)
+    // Normalize phone number to last 10 digits (consistent with all_leads normalization)
     // This ensures web and WhatsApp numbers can be matched correctly
     const normalizedPhone = normalizePhoneNumber(externalSessionId);
+    
+    if (!normalizedPhone) {
+      throw new Error('Invalid phone number: phone number must have at least 10 digits');
+    }
     
     // Try to find existing session
     // Note: Check what columns actually exist - might be 'chat_session_id' or 'session_id' instead of 'external_session_id'
@@ -37,7 +41,7 @@ export async function getOrCreateWhatsAppSession(externalSessionId, brand = 'pro
       customer_name: sessionData.profileName || sessionData.name || null,
       customer_email: sessionData.email || null,
       customer_phone: externalSessionId, // Store original format as-is
-      customer_phone_normalized: normalizedPhone, // Normalized: digits only for matching
+      customer_phone_normalized: normalizedPhone, // Normalized: last 10 digits only (removes country code)
       message_count: 0,
       last_message_at: new Date().toISOString(),
       channel_data: sessionData.channelData || {},

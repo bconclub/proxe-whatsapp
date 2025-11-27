@@ -3,28 +3,34 @@ import { logger } from '../utils/logger.js';
 
 /**
  * Normalize phone number for matching and deduplication
- * Removes all non-digits (spaces, +, -, etc.) while preserving country code and number
- * 
- * Examples:
- * - WhatsApp format: "919876543210" → "919876543210" (no change)
- * - Web format: "+91 9876543210" → "919876543210" (removes + and spaces)
- * - Web format: "+1 (555) 123-4567" → "15551234567" (removes all formatting)
+ * Returns the last 10 digits of the phone number (removes country code)
  * 
  * This ensures web and WhatsApp numbers match correctly:
- * - Web user enters: "+91 9876543210" → normalized: "919876543210"
- * - WhatsApp message from: "919876543210" → normalized: "919876543210"
- * - System recognizes: SAME PERSON ✅
+ * - Web user with "9876543210" matches WhatsApp user with "919876543210"
+ * - Both normalize to: "9876543210" (last 10 digits)
  * 
- * @param {string} phone - Phone number in any format (original format)
- * @returns {string} Normalized phone number (digits only, country code included)
+ * @param {string} phone - Phone number in any format
+ * @returns {string|null} Normalized phone number (last 10 digits only) or null if invalid
+ */
+function normalizePhone(phone) {
+  if (!phone) return null;
+  
+  // Remove all non-digits
+  const digits = phone.replace(/\D/g, '');
+  
+  if (!digits || digits.length < 10) return null;
+  
+  // Return last 10 digits (handles both 9876543210 and 919876543210)
+  return digits.slice(-10);
+}
+
+/**
+ * Normalize phone number - alias for normalizePhone (exported for backward compatibility)
+ * @param {string} phone - Phone number in any format
+ * @returns {string|null} Normalized phone number (last 10 digits only) or null if invalid
  */
 export function normalizePhoneNumber(phone) {
-  if (!phone || typeof phone !== 'string') {
-    return '';
-  }
-  // Remove all non-digit characters (spaces, +, -, parentheses, etc.)
-  // This preserves country code and number as digits only
-  return phone.replace(/\D/g, '');
+  return normalizePhone(phone);
 }
 
 /**
@@ -32,42 +38,42 @@ export function normalizePhoneNumber(phone) {
  * 
  * Phone number handling:
  * 1. Stores the WhatsApp number as-is in 'phone' field (preserves original format)
- * 2. Normalizes it (remove non-digits, keep country code) for 'customer_phone_normalized'
+ * 2. Normalizes it to last 10 digits for 'customer_phone_normalized' (removes country code)
  * 3. Uses normalized version for matching against all_leads
  * 
  * This ensures consistent matching:
- * - Web user enters: "+91 9876543210" → normalized: "919876543210"
- * - WhatsApp message from: "919876543210" → normalized: "919876543210"
+ * - Web user enters: "9876543210" → normalized: "9876543210"
+ * - WhatsApp message from: "919876543210" → normalized: "9876543210" (last 10 digits)
  * - System recognizes: SAME PERSON ✅
  * 
  * @param {string} phone - Phone number in original format
  *   - WhatsApp format: "919876543210" (country code + number, no formatting)
- *   - Web format: "+91 9876543210" or "+91-9876543210" (any formatting)
+ *   - Web format: "9876543210" or "+91 9876543210" (any formatting)
  * @param {string} brand - Brand name ('proxe' or 'windchasers')
  * @param {object} leadData - Optional lead data (name, email, etc.)
  * @returns {Promise<object>} Lead object from all_leads
  */
 export async function getOrCreateLead(phone, brand = 'proxe', leadData = {}) {
   try {
-    // Normalize phone number for matching (removes all non-digits)
+    // Normalize phone number to last 10 digits (removes country code)
     // This ensures web and WhatsApp numbers match correctly
-    const normalizedPhone = normalizePhoneNumber(phone);
+    const normalizedPhone = normalizePhone(phone);
     
     if (!normalizedPhone) {
-      throw new Error('Invalid phone number: phone number cannot be empty after normalization');
+      throw new Error('Invalid phone number: phone number must have at least 10 digits');
     }
     
-    // Try to find existing lead using normalized phone number
-    // This matches both web and WhatsApp formats (e.g., "+91 9876543210" matches "919876543210")
-    const { data: existing, error: fetchError } = await supabase
+    // Try to find existing lead using normalized phone number (last 10 digits)
+    // This matches both web and WhatsApp formats (e.g., "9876543210" matches "919876543210")
+    const { data: existingLead, error: fetchError } = await supabase
       .from('all_leads')
       .select('*')
       .eq('customer_phone_normalized', normalizedPhone)
       .eq('brand', brand)
       .single();
 
-    if (existing) {
-      logger.info(`Found existing lead: ${existing.id} for phone ${phone} (normalized: ${normalizedPhone})`);
+    if (existingLead) {
+      logger.info(`Found existing lead: ${existingLead.id} for phone ${phone} (normalized: ${normalizedPhone})`);
       
       // Update last interaction
       const { data: updated } = await supabase
@@ -77,11 +83,11 @@ export async function getOrCreateLead(phone, brand = 'proxe', leadData = {}) {
           last_interaction_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
-        .eq('id', existing.id)
+        .eq('id', existingLead.id)
         .select()
         .single();
       
-      return updated || existing;
+      return updated || existingLead;
     }
 
     // Create new lead
@@ -89,7 +95,7 @@ export async function getOrCreateLead(phone, brand = 'proxe', leadData = {}) {
     const { data: newLead, error: createError } = await supabase
       .from('all_leads')
       .insert({
-        customer_phone_normalized: normalizedPhone, // Normalized: digits only for matching
+        customer_phone_normalized: normalizedPhone, // Normalized: last 10 digits only (removes country code)
         phone: phone, // Original format: stored as-is (e.g., "919876543210" or "+91 9876543210")
         customer_name: leadData.profileName || leadData.name || null,
         email: leadData.email || null,
@@ -211,18 +217,28 @@ export async function updateCustomerContact(customerId) {
  * Get full customer context from all_leads table
  * Fetches unified_context including web conversations, bookings, and user inputs
  * 
- * Uses normalized phone number for matching to ensure web and WhatsApp numbers are recognized as the same person
+ * Uses normalized phone number (last 10 digits) for matching to ensure web and WhatsApp numbers are recognized as the same person
  * 
- * @param {string} phone - Phone number in original format (e.g., "919876543210" or "+91 9876543210")
+ * @param {string} phone - Phone number in original format (e.g., "919876543210" or "9876543210")
  * @param {string} brand - Brand name ('proxe' or 'windchasers')
  * @returns {Promise<object>} Enriched context object with web conversations, booking info, and user inputs
  */
 export async function getCustomerFullContext(phone, brand = 'proxe') {
   try {
-    // Normalize phone number for matching (ensures web and WhatsApp formats match)
-    const normalizedPhone = normalizePhoneNumber(phone);
+    // Normalize phone number to last 10 digits (ensures web and WhatsApp formats match)
+    const normalizedPhone = normalizePhone(phone);
     
-    // Fetch lead from all_leads table
+    if (!normalizedPhone) {
+      logger.warn(`Invalid phone number for full context lookup: ${phone}`);
+      return {
+        conversationSummary: null,
+        booking: null,
+        userInputs: [],
+        webConversations: null
+      };
+    }
+    
+    // Fetch lead from all_leads table using normalized phone
     const { data: lead, error } = await supabase
       .from('all_leads')
       .select('*')
