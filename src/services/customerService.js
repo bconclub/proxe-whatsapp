@@ -91,35 +91,65 @@ export async function getOrCreateLead(phone, brand = 'proxe', leadData = {}) {
     if (existingLead) {
       logger.info(`Found existing lead: ${existingLead.id} for phone ${phone} (normalized: ${normalizedPhone})`);
       
-      // Update last interaction
-      const { data: updated } = await supabase
+      // UPDATE existing lead - merge WhatsApp data into unified_context
+      const existingContext = existingLead.unified_context || {};
+      
+      // Merge WhatsApp data into unified_context
+      const updatedContext = {
+        ...existingContext,
+        whatsapp: {
+          ...(existingContext.whatsapp || {}),
+          last_interaction: new Date().toISOString(),
+          conversation_summary: leadData.conversation_summary || existingContext.whatsapp?.conversation_summary,
+          message_count: (existingContext.whatsapp?.message_count || 0) + 1
+        }
+      };
+
+      // Update the lead
+      const { data: updatedLead, error: updateError } = await supabase
         .from('all_leads')
         .update({
           last_touchpoint: 'whatsapp',
           last_interaction_at: new Date().toISOString(),
+          unified_context: updatedContext,
+          // Also update name if provided and currently null
+          customer_name: existingLead.customer_name || leadData.profileName || leadData.name || null,
+          email: existingLead.email || leadData.email || null,
           updated_at: new Date().toISOString()
         })
         .eq('id', existingLead.id)
         .select()
         .single();
-      
-      return updated || existingLead;
+
+      if (updateError) {
+        logger.error('Error updating lead:', updateError);
+        return existingLead; // Return existing if update fails
+      }
+
+      return updatedLead;
     }
 
-    // Create new lead
+    // Create new lead if doesn't exist
     // Store original phone format as-is, normalized version for matching
     const { data: newLead, error: createError } = await supabase
       .from('all_leads')
       .insert({
-        customer_phone_normalized: normalizedPhone, // Normalized: last 10 digits only (removes country code)
-        phone: phone, // Original format: stored as-is (e.g., "919876543210" or "+91 9876543210")
         customer_name: leadData.profileName || leadData.name || null,
         email: leadData.email || null,
+        phone: phone, // Original format: stored as-is (e.g., "919876543210" or "+91 9876543210")
+        customer_phone_normalized: normalizedPhone, // Normalized: last 10 digits only (removes country code)
         first_touchpoint: 'whatsapp',
         last_touchpoint: 'whatsapp',
-        brand: brand,
         last_interaction_at: new Date().toISOString(),
-        unified_context: leadData.metadata || {},
+        brand: brand,
+        unified_context: {
+          whatsapp: {
+            last_interaction: new Date().toISOString(),
+            conversation_summary: leadData.conversation_summary || null,
+            message_count: 1
+          },
+          ...(leadData.metadata || {})
+        },
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
@@ -227,6 +257,59 @@ export async function updateLeadContact(leadId) {
  */
 export async function updateCustomerContact(customerId) {
   await updateLeadContact(customerId);
+}
+
+/**
+ * Update WhatsApp context in unified_context for a lead
+ * Merges WhatsApp conversation summary and booking data into all_leads.unified_context.whatsapp
+ * @param {string} leadId - Lead UUID
+ * @param {object} summaryData - Object containing summary, booking_status, booking_date, booking_time
+ */
+export async function updateWhatsAppContext(leadId, summaryData) {
+  try {
+    const { data: lead, error: fetchError } = await supabase
+      .from('all_leads')
+      .select('unified_context')
+      .eq('id', leadId)
+      .single();
+
+    if (fetchError) {
+      logger.error('Error fetching lead for WhatsApp context update:', fetchError);
+      return;
+    }
+
+    const existingContext = lead?.unified_context || {};
+    
+    const updatedContext = {
+      ...existingContext,
+      whatsapp: {
+        ...(existingContext.whatsapp || {}),
+        conversation_summary: summaryData.summary || existingContext.whatsapp?.conversation_summary,
+        last_interaction: new Date().toISOString(),
+        booking_status: summaryData.booking_status || existingContext.whatsapp?.booking_status,
+        booking_date: summaryData.booking_date || existingContext.whatsapp?.booking_date,
+        booking_time: summaryData.booking_time || existingContext.whatsapp?.booking_time
+      }
+    };
+
+    const { error } = await supabase
+      .from('all_leads')
+      .update({
+        unified_context: updatedContext,
+        last_touchpoint: 'whatsapp',
+        last_interaction_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', leadId);
+
+    if (error) {
+      logger.error('Error updating WhatsApp context:', error);
+    } else {
+      logger.info(`Updated WhatsApp context for lead ${leadId}`);
+    }
+  } catch (error) {
+    logger.error('Error in updateWhatsAppContext:', error);
+  }
 }
 
 /**
