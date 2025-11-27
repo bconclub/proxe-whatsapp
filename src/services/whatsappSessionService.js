@@ -208,3 +208,76 @@ export async function updateConversationSummary(sessionId, summary) {
   }
 }
 
+/**
+ * Update conversation context (JSONB) in session
+ * @param {string} sessionId - Session UUID
+ * @param {object} context - Conversation context object
+ */
+export async function updateConversationContext(sessionId, context) {
+  const { error } = await supabase
+    .from('whatsapp_sessions')
+    .update({
+      conversation_context: context || {},
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', sessionId);
+
+  if (error) {
+    logger.error('Error updating conversation context:', error);
+    throw error;
+  }
+}
+
+/**
+ * Update user inputs summary (JSONB) in session
+ * @param {string} sessionId - Session UUID
+ * @param {object|array} userInputsSummary - User inputs summary (can be object or array)
+ */
+export async function updateUserInputsSummary(sessionId, userInputsSummary) {
+  const { error } = await supabase
+    .from('whatsapp_sessions')
+    .update({
+      user_inputs_summary: userInputsSummary || {},
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', sessionId);
+
+  if (error) {
+    logger.error('Error updating user inputs summary:', error);
+    throw error;
+  }
+}
+
+/**
+ * Update all conversation-related fields in session
+ * @param {string} sessionId - Session UUID
+ * @param {object} data - Object containing summary, context, and userInputsSummary
+ */
+export async function updateConversationData(sessionId, data) {
+  const updates = {
+    updated_at: new Date().toISOString()
+  };
+
+  if (data.summary !== undefined) {
+    updates.conversation_summary = data.summary;
+  }
+
+  if (data.context !== undefined) {
+    updates.conversation_context = data.context || {};
+  }
+
+  if (data.userInputsSummary !== undefined) {
+    updates.user_inputs_summary = data.userInputsSummary || {};
+  }
+
+  const { error } = await supabase
+    .from('whatsapp_sessions')
+    .update(updates)
+    .eq('id', sessionId);
+
+  if (error) {
+    logger.error('Error updating conversation data:', error);
+    throw error;
+  }
+}
+

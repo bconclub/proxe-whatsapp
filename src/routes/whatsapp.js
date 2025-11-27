@@ -1,8 +1,13 @@
 import express from 'express';
 import { z } from 'zod';
-import { getOrCreateLead, buildCustomerContext } from '../services/customerService.js';
+import { getOrCreateLead, buildCustomerContext, generateSummary, extractInterests } from '../services/customerService.js';
 import { getConversationHistory, addToHistory } from '../services/conversationService.js';
-import { getOrCreateWhatsAppSession, linkSessionToLead, incrementSessionMessageCount } from '../services/whatsappSessionService.js';
+import { 
+  getOrCreateWhatsAppSession, 
+  linkSessionToLead, 
+  incrementSessionMessageCount,
+  updateConversationData 
+} from '../services/whatsappSessionService.js';
 import { generateResponse } from '../services/claudeService.js';
 import { formatWhatsAppResponse } from '../services/responseFormatter.js';
 import { storeConversationLog } from '../services/loggingService.js';
@@ -179,6 +184,53 @@ router.post('/message', async (req, res, next) => {
 
     // Step 11: Increment session message count again
     await incrementSessionMessageCount(whatsappSession.id);
+
+    // Step 11.5: Update conversation summary, context, and user inputs
+    try {
+      // Get updated conversation history including the new messages
+      const updatedHistory = await getConversationHistory(lead.id, 20);
+      
+      // Generate conversation summary from messages
+      const conversationSummary = generateSummary([...updatedHistory].reverse());
+      
+      // Extract user interests/inputs from messages
+      const userInterests = extractInterests([...updatedHistory].reverse());
+      
+      // Build conversation context object
+      const conversationContext = {
+        conversationPhase: context?.conversationPhase || 'discovery',
+        messageCount: updatedHistory.length,
+        lastMessageAt: new Date().toISOString(),
+        interests: userInterests,
+        previousTopics: userInterests.slice(0, 5),
+        metadata: {
+          brand: brand,
+          leadId: lead.id,
+          updatedAt: new Date().toISOString()
+        }
+      };
+      
+      // Build user inputs summary
+      const userInputsSummary = {
+        interests: userInterests,
+        totalInputs: userInterests.length,
+        recentTopics: userInterests.slice(0, 10),
+        extractedAt: new Date().toISOString()
+      };
+      
+      // Update all conversation data in whatsapp_sessions
+      await updateConversationData(whatsappSession.id, {
+        summary: conversationSummary,
+        context: conversationContext,
+        userInputsSummary: userInputsSummary
+      });
+      
+      logger.info('Updated conversation summary, context, and user inputs summary');
+    } catch (error) {
+      console.error('=== ERROR updating conversation data ===', error);
+      logger.error('Error updating conversation data:', error);
+      // Continue - not critical for message processing
+    }
 
     // Step 12: Format response for WhatsApp
     const formattedResponse = formatWhatsAppResponse(

@@ -468,7 +468,7 @@ export async function buildCustomerContext(sessionId, brand = 'proxe') {
 /**
  * Extract interests from conversation history
  */
-function extractInterests(messages) {
+export function extractInterests(messages) {
   const interests = [];
   const keywords = ['property', 'properties', 'sqft', 'budget', 'location', 'area', 'rent'];
   
@@ -521,7 +521,7 @@ function determinePhase(messages) {
 /**
  * Generate conversation summary
  */
-function generateSummary(messages) {
+export function generateSummary(messages) {
   if (!messages || messages.length === 0) {
     return 'New customer, no previous conversation.';
   }
