@@ -180,11 +180,12 @@ export async function getMessagesForRetraining(filters = {}) {
 
 /**
  * Get average response time metrics from the last 5 responses
+ * Calculates gap from input_received_at and output_sent_at timestamps
  * @returns {Promise<object>} Object with average response times
  */
 export async function getAverageResponseTimes() {
   try {
-    // Get the last 5 agent messages (we'll filter for response_time_ms in code)
+    // Query the last 5 agent messages - fresh data every time, no caching
     const { data: messages, error } = await supabase
       .from('messages')
       .select('metadata, created_at')
@@ -200,24 +201,36 @@ export async function getAverageResponseTimes() {
 
     logger.info(`Found ${messages?.length || 0} agent messages for response time calculation`);
 
-    // Extract input-to-output gap times from metadata (preferred) or fallback to response_time_ms
+    // Calculate gap from input_received_at and output_sent_at timestamps
     const responseTimes = (messages || [])
       .map(msg => {
         const metadata = msg.metadata || {};
-        // Prefer input_to_output_gap_ms (time from input received to output sent)
-        // Fallback to response_time_ms (processing time only) if gap not available
-        const gapTime = metadata.input_to_output_gap_ms || metadata.response_time_ms;
         
-        // Log for debugging
-        if (!gapTime) {
-          logger.debug(`Message ${msg.created_at} has no input_to_output_gap_ms or response_time_ms in metadata:`, JSON.stringify(metadata));
+        // Extract timestamps from metadata
+        const inputReceivedAt = metadata.input_received_at;
+        const outputSentAt = metadata.output_sent_at;
+        
+        // Calculate gap: output_sent_at - input_received_at
+        if (inputReceivedAt && outputSentAt) {
+          const gap = outputSentAt - inputReceivedAt;
+          if (gap > 0) {
+            return gap;
+          }
         }
         
-        return gapTime;
+        // Fallback: try pre-calculated gap if timestamps not available
+        const gapTime = metadata.input_to_output_gap_ms || metadata.response_time_ms;
+        if (gapTime && typeof gapTime === 'number' && gapTime > 0) {
+          return gapTime;
+        }
+        
+        // Log for debugging if no valid time found
+        logger.debug(`Message ${msg.created_at} has no valid timing data in metadata:`, JSON.stringify(metadata));
+        return null;
       })
-      .filter(time => typeof time === 'number' && time > 0);
+      .filter(time => time !== null && typeof time === 'number' && time > 0);
 
-    logger.info(`Extracted ${responseTimes.length} valid response times from ${messages?.length || 0} messages`);
+    logger.info(`Calculated ${responseTimes.length} valid response times from ${messages?.length || 0} messages`);
 
     if (responseTimes.length === 0) {
       return {
