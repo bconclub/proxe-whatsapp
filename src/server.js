@@ -48,6 +48,7 @@ import buttonRoutes from './routes/button.js';
 import knowledgeBaseRoutes from './routes/knowledgeBase.js';
 import scheduleRoutes from './routes/schedule.js';
 import retrainRoutes from './routes/retrain.js';
+import webhookRoutes from './routes/webhook.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -73,6 +74,7 @@ app.use(cors({
 app.use(express.static('public'));
 
 // Body parsing
+// Note: Webhook routes need raw body for signature validation, so they're handled separately
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -587,6 +589,10 @@ app.get('/test-db', async (req, res) => {
     });
   }
 });
+
+// Webhook Routes (Meta WhatsApp) - needs raw body for signature validation
+// Must be mounted before other routes to capture raw body
+app.use('/webhook', express.raw({ type: 'application/json', limit: '10mb' }), webhookRoutes);
 
 // API Routes
 app.use('/api/whatsapp', whatsappRoutes);
