@@ -8,9 +8,10 @@ const router = express.Router();
  * Send WhatsApp message via Meta API
  * @param {string} to - Recipient phone number
  * @param {string} message - Message text to send
+ * @param {Array<string>} buttons - Optional array of button labels
  * @returns {Promise<Object>} - API response
  */
-async function sendWhatsAppMessage(to, message) {
+async function sendWhatsAppMessage(to, message, buttons = null) {
   const phoneNumberId = process.env.META_PHONE_NUMBER_ID;
   const accessToken = process.env.META_ACCESS_TOKEN;
 
@@ -24,13 +25,40 @@ async function sendWhatsAppMessage(to, message) {
 
   const url = `https://graph.facebook.com/v22.0/${phoneNumberId}/messages`;
   
-  const payload = {
-    messaging_product: 'whatsapp',
-    to: to,
-    text: {
-      body: message
-    }
-  };
+  let payload;
+  
+  // If buttons provided, send interactive message
+  if (buttons && buttons.length > 0 && buttons.length <= 3) {
+    payload = {
+      messaging_product: 'whatsapp',
+      to: to,
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        body: {
+          text: message
+        },
+        action: {
+          buttons: buttons.slice(0, 3).map((label, index) => ({
+            type: 'reply',
+            reply: {
+              id: `btn_${index + 1}`,
+              title: label.length > 20 ? label.substring(0, 20) : label
+            }
+          }))
+        }
+      }
+    };
+  } else {
+    // Plain text message
+    payload = {
+      messaging_product: 'whatsapp',
+      to: to,
+      text: {
+        body: message
+      }
+    };
+  }
 
   try {
     const response = await fetch(url, {
@@ -56,7 +84,8 @@ async function sendWhatsAppMessage(to, message) {
     logger.info('WhatsApp message sent successfully', {
       to,
       messageId: responseData.messages?.[0]?.id,
-      messageLength: message.length
+      messageLength: message.length,
+      hasButtons: !!(buttons && buttons.length > 0)
     });
 
     return responseData;
@@ -357,75 +386,148 @@ async function handleMessage(messageData) {
       whatsappSession.lead_id = lead.id;
     }
 
-    // Step 4: Build customer context
-    const context = await buildCustomerContext(sessionId, brand);
-    logger.info('Customer context built successfully');
+    // Step 3.5: Check if this is a NEW or RETURNING user
+    // Check if lead has existing messages BEFORE adding current message
+    const { supabase } = await import('../config/supabase.js');
+    const { data: existingMessages, error: messagesError } = await supabase
+      .from('messages')
+      .select('id')
+      .eq('lead_id', lead.id)
+      .eq('channel', 'whatsapp')
+      .limit(1);
 
-    // Step 5: Get conversation history
-    const conversationHistory = await getConversationHistory(lead.id, 10);
-    logger.info(`Retrieved ${conversationHistory.length} messages from history`);
+    if (messagesError) {
+      logger.warn('Error checking existing messages, defaulting to returning user', { error: messagesError.message });
+    }
 
-    // Step 6: Add user message to messages table
+    const isNewUser = !existingMessages || existingMessages.length === 0;
+    logger.info(`User type detected: ${isNewUser ? 'NEW' : 'RETURNING'}`, {
+      leadId: lead.id,
+      existingMessagesCount: existingMessages?.length || 0
+    });
+
+    // Step 4: Add user message to messages table
     await addToHistory(lead.id, message, 'user', 'text', {
       input_received_at: inputReceivedAt
     });
 
-    // Step 7: Increment session message count
+    // Step 5: Increment session message count
     await incrementSessionMessageCount(whatsappSession.id);
 
-    // Step 8: Generate AI response
-    const aiResponse = await generateResponse(context, message, conversationHistory);
-    logger.info('AI response generated successfully');
+    let aiResponse;
+    let outputSentAt;
+    let inputToOutputGap;
 
-    // Step 9: Calculate time gap
-    const outputSentAt = Date.now();
-    const inputToOutputGap = outputSentAt - inputReceivedAt;
+    // Step 6: Handle NEW vs RETURNING users
+    if (isNewUser) {
+      // NEW USER: Send template response with buttons, skip Claude
+      logger.info('New user detected - sending template welcome message');
+      
+      const welcomeMessage = "Hey! I'm PROXe. What brings you here today?";
+      // New user gets: "Learn More" + "Book Demo" (exactly 2 buttons)
+      const welcomeButtons = ["Learn More", "Book Demo"];
+      
+      // Send welcome message with buttons
+      try {
+        await sendWhatsAppMessage(sessionId, welcomeMessage, welcomeButtons);
+        logger.info('Welcome message sent to new user', { sessionId });
+      } catch (error) {
+        logger.error('Failed to send welcome message', {
+          sessionId,
+          error: error.message
+        });
+        throw error;
+      }
 
-    // Step 10: Add assistant response to messages table
+      // Create mock AI response for logging consistency
+      outputSentAt = Date.now();
+      inputToOutputGap = outputSentAt - inputReceivedAt;
+      
+      aiResponse = {
+        rawResponse: welcomeMessage,
+        responseType: 'text_with_buttons',
+        buttons: welcomeButtons,
+        urgency: 'low',
+        nextAction: 'wait_for_user_selection',
+        tokensUsed: 0,
+        responseTime: outputSentAt - startTime
+      };
+    } else {
+      // RETURNING USER: Use existing Claude flow
+      logger.info('Returning user detected - using Claude AI response');
+      
+      // Build customer context
+      const context = await buildCustomerContext(sessionId, brand);
+      logger.info('Customer context built successfully');
+
+      // Get conversation history (includes the message we just added)
+      const conversationHistory = await getConversationHistory(lead.id, 10);
+      logger.info(`Retrieved ${conversationHistory.length} messages from history`);
+
+      // Calculate message count for button logic (exclude current message from count)
+      // conversationHistory includes user messages and assistant responses
+      // For button logic, we want the count of previous exchanges
+      const messageCount = Math.floor(conversationHistory.length / 2); // Each exchange = user + assistant
+
+      // Generate AI response (pass isNewUser=false since we already checked)
+      aiResponse = await generateResponse(context, message, conversationHistory, false);
+      logger.info('AI response generated successfully');
+
+      // Calculate time gap
+      outputSentAt = Date.now();
+      inputToOutputGap = outputSentAt - inputReceivedAt;
+    }
+
+    // Step 7: Add assistant response to messages table
     await addToHistory(lead.id, aiResponse.rawResponse, 'assistant', 'text', {
       input_received_at: inputReceivedAt,
       output_sent_at: outputSentAt,
       input_to_output_gap_ms: inputToOutputGap
     });
 
-    // Step 11: Increment session message count again
+    // Step 8: Increment session message count again
     await incrementSessionMessageCount(whatsappSession.id);
 
-    // Step 12: Update conversation summary, context, and user inputs
-    try {
-      const updatedHistory = await getConversationHistory(lead.id, 20);
-      const conversationSummary = generateSummary([...updatedHistory].reverse());
-      const userInterests = extractInterests([...updatedHistory].reverse());
-      
-      const conversationContext = {
-        conversationPhase: context?.conversationPhase || 'discovery',
-        messageCount: updatedHistory.length,
-        lastMessageAt: new Date().toISOString(),
-        interests: userInterests,
-        previousTopics: userInterests.slice(0, 5),
-        metadata: {
-          brand: brand,
-          leadId: lead.id,
-          updatedAt: new Date().toISOString()
-        }
-      };
-      
-      const userInputsSummary = {
-        interests: userInterests,
-        totalInputs: userInterests.length,
-        recentTopics: userInterests.slice(0, 10),
-        extractedAt: new Date().toISOString()
-      };
-      
-      await updateConversationData(whatsappSession.id, {
-        summary: conversationSummary,
-        context: conversationContext,
-        userInputsSummary: userInputsSummary
-      });
-      
-      logger.info('Updated conversation summary, context, and user inputs summary');
-    } catch (error) {
-      logger.error('Error updating conversation data:', error);
+    // Step 9: Update conversation summary, context, and user inputs (only for returning users)
+    if (!isNewUser) {
+      try {
+        const updatedHistory = await getConversationHistory(lead.id, 20);
+        const conversationSummary = generateSummary([...updatedHistory].reverse());
+        const userInterests = extractInterests([...updatedHistory].reverse());
+        
+        // Build context for returning users
+        const context = await buildCustomerContext(sessionId, brand);
+        
+        const conversationContext = {
+          conversationPhase: context?.conversationPhase || 'discovery',
+          messageCount: updatedHistory.length,
+          lastMessageAt: new Date().toISOString(),
+          interests: userInterests,
+          previousTopics: userInterests.slice(0, 5),
+          metadata: {
+            brand: brand,
+            leadId: lead.id,
+            updatedAt: new Date().toISOString()
+          }
+        };
+        
+        const userInputsSummary = {
+          interests: userInterests,
+          totalInputs: userInterests.length,
+          recentTopics: userInterests.slice(0, 10),
+          extractedAt: new Date().toISOString()
+        };
+        
+        await updateConversationData(whatsappSession.id, {
+          summary: conversationSummary,
+          context: conversationContext,
+          userInputsSummary: userInputsSummary
+        });
+        
+        logger.info('Updated conversation summary, context, and user inputs summary');
+      } catch (error) {
+        logger.error('Error updating conversation data:', error);
+      }
     }
 
     // Step 13: Format response for WhatsApp
@@ -442,16 +544,21 @@ async function handleMessage(messageData) {
       }
     );
 
-    // Step 13.5: Send WhatsApp message via Meta API
-    try {
-      await sendWhatsAppMessage(sessionId, aiResponse.rawResponse);
-      logger.info('WhatsApp message sent successfully', { sessionId });
-    } catch (error) {
-      logger.error('Failed to send WhatsApp message', {
-        sessionId,
-        error: error.message
-      });
-      // Don't throw - we still want to store the log even if sending fails
+    // Step 10: Send WhatsApp message via Meta API
+    // For new users, message already sent with buttons
+    // For returning users, send Claude response
+    if (!isNewUser) {
+      try {
+        // Send message with buttons if available
+        await sendWhatsAppMessage(sessionId, aiResponse.rawResponse, aiResponse.buttons);
+        logger.info('WhatsApp message sent successfully', { sessionId });
+      } catch (error) {
+        logger.error('Failed to send WhatsApp message', {
+          sessionId,
+          error: error.message
+        });
+        // Don't throw - we still want to store the log even if sending fails
+      }
     }
 
     // Step 14: Store conversation log

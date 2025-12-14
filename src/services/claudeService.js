@@ -6,7 +6,7 @@ import { queryKnowledgeBase, formatKnowledgeContext } from './knowledgeBaseServi
 /**
  * Generate AI response using Claude API
  */
-export async function generateResponse(customerContext, message, conversationHistory) {
+export async function generateResponse(customerContext, message, conversationHistory, isNewUser = false) {
   try {
     // Skip knowledge base for simple greetings (saves ~1-2s per request)
     const simpleGreeting = /^(hi|hello|hey|hii+|good\s*(morning|evening|afternoon)|thanks|thank you|ok|okay|bye)[\s!.]*$/i.test(message.trim());
@@ -57,8 +57,13 @@ export async function generateResponse(customerContext, message, conversationHis
     const responseTime = Date.now() - startTime;
     const rawResponse = response.content[0].text;
     
-    // Parse response for action indicators (pass user message for intent detection)
-    const parsed = parseResponse(rawResponse, message);
+    // Parse response for action indicators (pass user message, conversation history length, and new user status)
+    // Count previous exchanges: conversationHistory has alternating user/assistant messages
+    // Count assistant messages to get number of previous responses
+    const messageCount = conversationHistory 
+      ? conversationHistory.filter(msg => msg.role === 'assistant').length 
+      : 0;
+    const parsed = parseResponse(rawResponse, message, messageCount, isNewUser);
     
     logger.info('Claude response generated', {
       tokensUsed: response.usage?.output_tokens || 0,
@@ -177,103 +182,63 @@ function buildCustomerContextNote(context) {
 }
 
 /**
- * Detect user intent and suggest relevant buttons
+ * Determine dynamic 2-button pair based on context and user journey stage
+ * @param {string} userMessage - User's message
+ * @param {string} aiResponse - AI's response text
+ * @param {number} messageCount - Number of messages in conversation
+ * @param {boolean} isNewUser - Whether this is a new user (first message)
+ * @returns {Array<string>} Array of exactly 2 button labels
  */
-function detectIntentAndSuggestButtons(userMessage, aiResponse) {
+function determineButtonPair(userMessage, aiResponse, messageCount = 0, isNewUser = false) {
   const lowerMessage = userMessage.toLowerCase();
   const lowerResponse = aiResponse.toLowerCase();
-  const suggestedButtons = [];
   
-  // Intent patterns and their corresponding buttons
-  const intentPatterns = [
-    {
-      keywords: ['call', 'schedule', 'book', 'appointment', 'meeting', 'demo', 'talk', 'speak'],
-      buttons: ['Book a Call', 'Schedule Demo']
-    },
-    {
-      keywords: ['price', 'pricing', 'cost', 'fee', 'charge', 'how much', 'pricing plan', 'plan'],
-      buttons: ['View Pricing', 'Get Quote']
-    },
-    {
-      keywords: ['info', 'information', 'details', 'tell me', 'explain', 'what is', 'how does'],
-      buttons: ['Learn More', 'Get Info']
-    },
-    {
-      keywords: ['start', 'begin', 'sign up', 'register', 'get started', 'try', 'demo'],
-      buttons: ['Get Started', 'Sign Up']
-    },
-    {
-      keywords: ['contact', 'reach', 'email', 'phone', 'support', 'help'],
-      buttons: ['Contact Us', 'Get Support']
-    },
-    {
-      keywords: ['property', 'properties', 'listing', 'space', 'office', 'commercial'],
-      buttons: ['View Properties', 'Browse Listings']
-    }
-  ];
-  
-  // Check user message for intent
-  for (const pattern of intentPatterns) {
-    if (pattern.keywords.some(keyword => lowerMessage.includes(keyword))) {
-      suggestedButtons.push(...pattern.buttons);
-      break; // Only add buttons for the first matching intent
-    }
+  // New User (first message): Always "Learn More" + "Book Demo"
+  if (isNewUser || messageCount === 0) {
+    return ["Learn More", "Book Demo"];
   }
   
-  // Also check AI response for context
-  if (lowerResponse.includes('call') || lowerResponse.includes('schedule')) {
-    if (!suggestedButtons.some(b => b.toLowerCase().includes('call'))) {
-      suggestedButtons.push('Book a Call');
-    }
+  // After Multiple Messages (engaged): "Deploy PROXe" + "Book Demo"
+  if (messageCount >= 3) {
+    return ["Deploy PROXe", "Book Demo"];
   }
   
-  if (lowerResponse.includes('price') || lowerResponse.includes('cost')) {
-    if (!suggestedButtons.some(b => b.toLowerCase().includes('price'))) {
-      suggestedButtons.push('View Pricing');
-    }
+  // Pricing Questions: "View Plans" + "Book Demo"
+  const pricingKeywords = ['price', 'pricing', 'cost', 'fee', 'charge', 'how much', 'pricing plan', 'plan', 'subscription', 'monthly', 'yearly', 'afford'];
+  if (pricingKeywords.some(keyword => lowerMessage.includes(keyword) || lowerResponse.includes(keyword))) {
+    return ["View Plans", "Book Demo"];
   }
   
-  // Remove duplicates and limit to 3 buttons (WhatsApp limit)
-  return [...new Set(suggestedButtons)].slice(0, 3);
+  // Feature/Technical Questions: "See Demo" + "Schedule Call"
+  const featureKeywords = ['feature', 'how does', 'how it works', 'technical', 'integration', 'api', 'setup', 'implement', 'function', 'capability', 'what can', 'does it'];
+  if (featureKeywords.some(keyword => lowerMessage.includes(keyword) || lowerResponse.includes(keyword))) {
+    return ["See Demo", "Schedule Call"];
+  }
+  
+  // General Questions: "Deploy PROXe" + "Schedule Call"
+  // This is the default for any other questions
+  return ["Deploy PROXe", "Schedule Call"];
 }
 
 /**
  * Parse Claude response for buttons and metadata
+ * Always returns exactly 2 buttons based on context and user journey
  */
-function parseResponse(rawResponse, userMessage = '') {
+function parseResponse(rawResponse, userMessage = '', messageCount = 0, isNewUser = false) {
   const buttonRegex = /→\s*BUTTON:\s*(.+)/gi;
-  const buttons = [];
   let text = rawResponse;
 
-  // Extract buttons from Claude response
+  // Remove button markers from text (Claude may suggest buttons, but we override with dynamic system)
   let match;
   while ((match = buttonRegex.exec(rawResponse)) !== null) {
-    buttons.push(match[1].trim());
-    // Remove button markers from text
     text = text.replace(match[0], '').trim();
   }
 
-  // Auto-detect intent and add relevant buttons if none were suggested by Claude
-  if (buttons.length === 0 && userMessage) {
-    const suggestedButtons = detectIntentAndSuggestButtons(userMessage, rawResponse);
-    buttons.push(...suggestedButtons);
-  } else if (buttons.length > 0 && userMessage) {
-    // Merge Claude's buttons with intent-based suggestions (avoid duplicates)
-    const suggestedButtons = detectIntentAndSuggestButtons(userMessage, rawResponse);
-    suggestedButtons.forEach(btn => {
-      if (!buttons.some(b => b.toLowerCase() === btn.toLowerCase())) {
-        buttons.push(btn);
-      }
-    });
-    // Limit to 3 buttons total (WhatsApp limit)
-    buttons.splice(3);
-  }
+  // Always use dynamic 2-button system based on context
+  const buttons = determineButtonPair(userMessage, rawResponse, messageCount, isNewUser);
 
-  // Determine response type
-  let responseType = 'text_only';
-  if (buttons.length > 0) {
-    responseType = buttons.length <= 3 ? 'text_with_buttons' : 'text_with_list';
-  }
+  // Determine response type (always text_with_buttons since we always have 2 buttons)
+  const responseType = 'text_with_buttons';
 
   // Determine urgency (simple heuristic)
   const urgencyKeywords = {
