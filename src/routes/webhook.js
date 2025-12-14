@@ -289,18 +289,49 @@ async function processWebhook(webhookData) {
 
           // Extract message text
           let messageText = '';
+          let buttonId = null;
+          let buttonTitle = null;
+          
           if (message.text && message.text.body) {
+            // Regular text message
             messageText = message.text.body;
+          } else if (message.type === 'interactive' && message.interactive) {
+            // Interactive message (button click)
+            if (message.interactive.type === 'button_reply' && message.interactive.button_reply) {
+              buttonId = message.interactive.button_reply.id;
+              buttonTitle = message.interactive.button_reply.title;
+              messageText = buttonTitle; // Use button title as message text
+              logger.info('Button click detected', { buttonId, buttonTitle, phone });
+            } else if (message.interactive.type === 'list_reply' && message.interactive.list_reply) {
+              // Handle list reply if needed
+              buttonId = message.interactive.list_reply.id;
+              buttonTitle = message.interactive.list_reply.title;
+              messageText = buttonTitle;
+              logger.info('List reply detected', { buttonId, buttonTitle, phone });
+            } else {
+              logger.warn('Unsupported interactive message type', { 
+                type: message.interactive.type,
+                phone 
+              });
+              continue;
+            }
           } else if (message.type === 'button' && message.button) {
-            // Handle button responses
+            // Legacy button format (fallback)
             messageText = message.button.text || message.button.payload || '';
+            buttonId = message.button.id;
+            buttonTitle = message.button.text;
           } else {
-            logger.warn('Message missing text content', { type: message.type });
+            logger.warn('Message missing text content', { 
+              type: message.type,
+              phone,
+              hasText: !!(message.text && message.text.body),
+              hasInteractive: !!(message.interactive)
+            });
             continue;
           }
 
           if (!messageText || messageText.trim().length === 0) {
-            logger.warn('Message text is empty');
+            logger.warn('Message text is empty', { phone, buttonId, buttonTitle });
             continue;
           }
 
@@ -322,13 +353,18 @@ async function processWebhook(webhookData) {
             message: messageText,
             profileName: profileName,
             timestamp: timestamp,
-            brand: 'proxe' // Default brand, can be made configurable
+            brand: 'proxe', // Default brand, can be made configurable
+            buttonId: buttonId, // Include button ID if it's a button click
+            buttonTitle: buttonTitle // Include button title if it's a button click
           };
 
           logger.info('Processing Meta webhook message', {
             sessionId: phone,
             messageLength: messageText.length,
-            hasProfileName: !!profileName
+            hasProfileName: !!profileName,
+            isButtonClick: !!buttonId,
+            buttonId: buttonId,
+            buttonTitle: buttonTitle
           });
 
           // Call existing message handler
