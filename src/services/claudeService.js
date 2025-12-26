@@ -195,90 +195,48 @@ function buildCustomerContextNote(context) {
 }
 
 /**
- * Determine single context-aware button based on customer context and conversation
- * @param {string} userMessage - User's message
- * @param {string} aiResponse - AI's response text
- * @param {number} messageCount - Number of messages in conversation
- * @param {boolean} isNewUser - Whether this is a new user (first message)
- * @param {object} customerContext - Customer context object with booking info, etc.
+ * Get fallback button if Claude didn't suggest one
+ * Simple fallback based on booking status
+ * @param {object} customerContext - Customer context object with booking info
  * @returns {Array<string>} Array with exactly 1 button label
  */
-function determineButtonPair(userMessage, aiResponse, messageCount = 0, isNewUser = false, customerContext = {}) {
-  const lowerMessage = userMessage.toLowerCase();
-  const lowerResponse = aiResponse.toLowerCase();
+function getFallbackButton(customerContext = {}) {
+  const hasBooking = customerContext?.booking?.exists;
   
-  // Check if user has existing booking
-  const hasBooking = customerContext?.booking?.exists || 
-                     lowerResponse.includes('booking confirmed') || 
-                     lowerResponse.includes('demo is confirmed') || 
-                     lowerResponse.includes('already have a demo');
-  
-  // If user has booking and asks about reschedule
-  if (hasBooking && (lowerMessage.includes('reschedule') || lowerMessage.includes('change time') || lowerMessage.includes('different time'))) {
-    return ["Confirm Reschedule"];
-  }
-  
-  // If user has booking and asks about cancel
-  if (hasBooking && (lowerMessage.includes('cancel') || lowerMessage.includes('cancel booking') || lowerMessage.includes('cancel demo'))) {
-    return ["Confirm Cancel"];
-  }
-  
-  // If user has booking (default) - never show "Book Demo"
   if (hasBooking) {
     return ["Ask a Question"];
   }
-  
-  // If response mentions pricing ($99, $199, cost)
-  if (lowerResponse.includes('$99') || lowerResponse.includes('$199') || 
-      lowerResponse.includes('99/month') || lowerResponse.includes('199/month') ||
-      (lowerMessage.includes('price') || lowerMessage.includes('pricing') || lowerMessage.includes('cost')) &&
-      (lowerResponse.includes('$') || lowerResponse.includes('month'))) {
-    return ["Book Demo"];
-  }
-  
-  // If user asks how/features/what can
-  const howFeatureKeywords = ['how', 'feature', 'what can', 'what does', 'how does', 'how it works', 'capability', 'can it'];
-  if (howFeatureKeywords.some(keyword => lowerMessage.includes(keyword) || lowerResponse.includes(keyword))) {
-    return ["See Demo"];
-  }
-  
-  // If user says thanks/ok/bye
-  if (/^(thanks|thank you|ok|okay|bye|goodbye|see you|ttyl)[\s!.]*$/i.test(lowerMessage.trim())) {
-    return ["Book Demo"];
-  }
-  
-  // If new user or first message
-  if (isNewUser || messageCount === 0) {
-    return ["Learn More"];
-  }
-  
-  // If engaged user (3+ messages) without booking
-  if (messageCount >= 3) {
-    return ["Book Demo"];
-  }
-  
-  // Default
   return ["Learn More"];
 }
 
 /**
  * Parse Claude response for buttons and metadata
- * Returns exactly 1 context-aware button based on customer context
+ * Extracts Claude's suggested button or uses fallback
  */
-function parseResponse(rawResponse, userMessage = '', messageCount = 0, isNewUser = false, customerContext = {}) {
-  const buttonRegex = /→\s*BUTTON:\s*(.+)/gi;
+function parseResponse(rawResponse, userMessage = '', messageCount = 0, isNewUser = false, customerContext = null) {
   let text = rawResponse;
-
-  // Remove button markers from text (Claude may suggest buttons, but we override with dynamic system)
-  let match;
-  while ((match = buttonRegex.exec(rawResponse)) !== null) {
-    text = text.replace(match[0], '').trim();
+  let buttons = [];
+  
+  // Try to extract Claude's suggested button
+  const buttonRegex = /→\s*BUTTON:\s*(.+)/gi;
+  const matches = [...rawResponse.matchAll(buttonRegex)];
+  
+  if (matches.length > 0) {
+    // Use the last button suggestion (most relevant)
+    const suggestedButton = matches[matches.length - 1][1].trim();
+    buttons = [suggestedButton];
+    
+    // Remove all button markers from text
+    text = rawResponse.replace(buttonRegex, '').trim();
+  } else {
+    // Fallback if Claude didn't suggest a button
+    buttons = getFallbackButton(customerContext);
   }
-
-  // Use context-aware single button system
-  const buttons = determineButtonPair(userMessage, rawResponse, messageCount, isNewUser, customerContext);
-
-  // Determine response type (text_with_buttons if we have a button, text_only otherwise)
+  
+  // Clean up any extra whitespace or newlines at the end
+  text = text.replace(/\n+$/, '').trim();
+  
+  // Determine response type
   const responseType = buttons.length > 0 ? 'text_with_buttons' : 'text_only';
 
   // Determine urgency (simple heuristic)
