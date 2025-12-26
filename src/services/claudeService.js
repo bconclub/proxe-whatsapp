@@ -63,7 +63,7 @@ export async function generateResponse(customerContext, message, conversationHis
     const messageCount = conversationHistory 
       ? conversationHistory.filter(msg => msg.role === 'assistant').length 
       : 0;
-    const parsed = parseResponse(rawResponse, message, messageCount, isNewUser);
+    const parsed = parseResponse(rawResponse, message, messageCount, isNewUser, customerContext);
     
     logger.info('Claude response generated', {
       tokensUsed: response.usage?.output_tokens || 0,
@@ -195,49 +195,77 @@ function buildCustomerContextNote(context) {
 }
 
 /**
- * Determine dynamic 2-button pair based on context and user journey stage
+ * Determine single context-aware button based on customer context and conversation
  * @param {string} userMessage - User's message
  * @param {string} aiResponse - AI's response text
  * @param {number} messageCount - Number of messages in conversation
  * @param {boolean} isNewUser - Whether this is a new user (first message)
- * @returns {Array<string>} Array of exactly 2 button labels
+ * @param {object} customerContext - Customer context object with booking info, etc.
+ * @returns {Array<string>} Array with exactly 1 button label
  */
-function determineButtonPair(userMessage, aiResponse, messageCount = 0, isNewUser = false) {
+function determineButtonPair(userMessage, aiResponse, messageCount = 0, isNewUser = false, customerContext = {}) {
   const lowerMessage = userMessage.toLowerCase();
   const lowerResponse = aiResponse.toLowerCase();
   
-  // New User (first message): Always "Learn More" + "Book Demo"
+  // Check if user has existing booking
+  const hasBooking = customerContext?.booking?.exists || 
+                     lowerResponse.includes('booking confirmed') || 
+                     lowerResponse.includes('demo is confirmed') || 
+                     lowerResponse.includes('already have a demo');
+  
+  // If user has booking and asks about reschedule
+  if (hasBooking && (lowerMessage.includes('reschedule') || lowerMessage.includes('change time') || lowerMessage.includes('different time'))) {
+    return ["Confirm Reschedule"];
+  }
+  
+  // If user has booking and asks about cancel
+  if (hasBooking && (lowerMessage.includes('cancel') || lowerMessage.includes('cancel booking') || lowerMessage.includes('cancel demo'))) {
+    return ["Confirm Cancel"];
+  }
+  
+  // If user has booking (default) - never show "Book Demo"
+  if (hasBooking) {
+    return ["Ask a Question"];
+  }
+  
+  // If response mentions pricing ($99, $199, cost)
+  if (lowerResponse.includes('$99') || lowerResponse.includes('$199') || 
+      lowerResponse.includes('99/month') || lowerResponse.includes('199/month') ||
+      (lowerMessage.includes('price') || lowerMessage.includes('pricing') || lowerMessage.includes('cost')) &&
+      (lowerResponse.includes('$') || lowerResponse.includes('month'))) {
+    return ["Book Demo"];
+  }
+  
+  // If user asks how/features/what can
+  const howFeatureKeywords = ['how', 'feature', 'what can', 'what does', 'how does', 'how it works', 'capability', 'can it'];
+  if (howFeatureKeywords.some(keyword => lowerMessage.includes(keyword) || lowerResponse.includes(keyword))) {
+    return ["See Demo"];
+  }
+  
+  // If user says thanks/ok/bye
+  if (/^(thanks|thank you|ok|okay|bye|goodbye|see you|ttyl)[\s!.]*$/i.test(lowerMessage.trim())) {
+    return ["Book Demo"];
+  }
+  
+  // If new user or first message
   if (isNewUser || messageCount === 0) {
-    return ["Learn More", "Book Demo"];
+    return ["Learn More"];
   }
   
-  // After Multiple Messages (engaged): "Deploy PROXe" + "Book Demo"
+  // If engaged user (3+ messages) without booking
   if (messageCount >= 3) {
-    return ["Deploy PROXe", "Book Demo"];
+    return ["Book Demo"];
   }
   
-  // Pricing Questions: "View Plans" + "Book Demo"
-  const pricingKeywords = ['price', 'pricing', 'cost', 'fee', 'charge', 'how much', 'pricing plan', 'plan', 'subscription', 'monthly', 'yearly', 'afford'];
-  if (pricingKeywords.some(keyword => lowerMessage.includes(keyword) || lowerResponse.includes(keyword))) {
-    return ["View Plans", "Book Demo"];
-  }
-  
-  // Feature/Technical Questions: "See Demo" + "Schedule Call"
-  const featureKeywords = ['feature', 'how does', 'how it works', 'technical', 'integration', 'api', 'setup', 'implement', 'function', 'capability', 'what can', 'does it'];
-  if (featureKeywords.some(keyword => lowerMessage.includes(keyword) || lowerResponse.includes(keyword))) {
-    return ["See Demo", "Schedule Call"];
-  }
-  
-  // General Questions: "Deploy PROXe" + "Schedule Call"
-  // This is the default for any other questions
-  return ["Deploy PROXe", "Schedule Call"];
+  // Default
+  return ["Learn More"];
 }
 
 /**
  * Parse Claude response for buttons and metadata
- * Always returns exactly 2 buttons based on context and user journey
+ * Returns exactly 1 context-aware button based on customer context
  */
-function parseResponse(rawResponse, userMessage = '', messageCount = 0, isNewUser = false) {
+function parseResponse(rawResponse, userMessage = '', messageCount = 0, isNewUser = false, customerContext = {}) {
   const buttonRegex = /→\s*BUTTON:\s*(.+)/gi;
   let text = rawResponse;
 
@@ -247,11 +275,11 @@ function parseResponse(rawResponse, userMessage = '', messageCount = 0, isNewUse
     text = text.replace(match[0], '').trim();
   }
 
-  // Always use dynamic 2-button system based on context
-  const buttons = determineButtonPair(userMessage, rawResponse, messageCount, isNewUser);
+  // Use context-aware single button system
+  const buttons = determineButtonPair(userMessage, rawResponse, messageCount, isNewUser, customerContext);
 
-  // Determine response type (always text_with_buttons since we always have 2 buttons)
-  const responseType = 'text_with_buttons';
+  // Determine response type (text_with_buttons if we have a button, text_only otherwise)
+  const responseType = buttons.length > 0 ? 'text_with_buttons' : 'text_only';
 
   // Determine urgency (simple heuristic)
   const urgencyKeywords = {

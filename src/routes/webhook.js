@@ -436,9 +436,20 @@ async function handleMessage(messageData) {
       logger.warn('Error checking existing messages, defaulting to returning user', { error: messagesError.message });
     }
 
-    const isNewUser = !existingMessages || existingMessages.length === 0;
+    // Check for web history and bookings in unified_context
+    const hasWebHistory = lead.unified_context?.web?.user_inputs?.length > 0 || 
+                          lead.unified_context?.web?.conversation_summary;
+    const hasBooking = lead.unified_context?.web?.booking_status === 'confirmed';
+    const hasWhatsAppHistory = existingMessages && existingMessages.length > 0;
+
+    // User is only "new" if they have NO history across any channel
+    const isNewUser = !hasWebHistory && !hasBooking && !hasWhatsAppHistory;
+    
     logger.info(`User type detected: ${isNewUser ? 'NEW' : 'RETURNING'}`, {
       leadId: lead.id,
+      hasWebHistory,
+      hasBooking,
+      hasWhatsAppHistory,
       existingMessagesCount: existingMessages?.length || 0
     });
 
@@ -460,8 +471,8 @@ async function handleMessage(messageData) {
       logger.info('New user detected - sending template welcome message');
       
       const welcomeMessage = "Hey! I'm PROXe. What brings you here today?";
-      // New user gets: "Learn More" + "Book Demo" (exactly 2 buttons)
-      const welcomeButtons = ["Learn More", "Book Demo"];
+      // New user gets: "Learn More" button (single button)
+      const welcomeButtons = ["Learn More"];
       
       // Send welcome message with buttons
       try {
@@ -489,8 +500,8 @@ async function handleMessage(messageData) {
         responseTime: outputSentAt - startTime
       };
     } else {
-      // RETURNING USER: Use existing Claude flow
-      logger.info('Returning user detected - using Claude AI response');
+      // RETURNING USER (has web history, booking, or WhatsApp history): Use Claude to generate personalized response
+      logger.info('Returning user detected - using Claude AI response with context-aware greeting');
       
       // Build customer context
       const context = await buildCustomerContext(sessionId, brand);
@@ -506,6 +517,7 @@ async function handleMessage(messageData) {
       const messageCount = Math.floor(conversationHistory.length / 2); // Each exchange = user + assistant
 
       // Generate AI response (pass isNewUser=false since we already checked)
+      // Claude will use the greeting instructions we added to generate context-aware greeting
       aiResponse = await generateResponse(context, message, conversationHistory, false);
       logger.info('AI response generated successfully');
 
