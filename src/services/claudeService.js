@@ -178,6 +178,19 @@ function buildCustomerContextNote(context) {
     parts.push(`Conversation summary: ${context.conversationSummary}`);
   }
   
+  // Add greeting instruction based on customer context
+  if (context.booking && context.booking.exists) {
+    const bookingDate = context.booking.booking_date || 'the scheduled date';
+    const bookingTime = context.booking.booking_time || 'the scheduled time';
+    parts.push(`GREETING INSTRUCTION: This is a returning customer with a confirmed booking on ${bookingDate} at ${bookingTime}. Greet them by name and acknowledge their booking. Do NOT ask 'What brings you here today?'`);
+  } else if (context.webConversationSummary) {
+    parts.push(`GREETING INSTRUCTION: This is a returning customer who previously chatted on the website. Greet them by name and reference you've chatted before. Do NOT treat them as new.`);
+  } else if (context.conversationCount > 0) {
+    parts.push(`GREETING INSTRUCTION: This is a returning customer. Greet them warmly by name if available. Do NOT ask generic questions like 'What brings you here today?'`);
+  } else {
+    parts.push(`GREETING INSTRUCTION: This is a new customer. Welcome them warmly and ask how you can help.`);
+  }
+  
   return parts.length > 0 ? parts.join('\n') : null;
 }
 
