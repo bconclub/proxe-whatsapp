@@ -263,7 +263,7 @@ export async function updateCustomerContact(customerId) {
  * Update WhatsApp context in unified_context for a lead
  * Merges WhatsApp conversation summary and booking data into all_leads.unified_context.whatsapp
  * @param {string} leadId - Lead UUID
- * @param {object} summaryData - Object containing summary, booking_status, booking_date, booking_time
+ * @param {object} summaryData - Object containing conversation_summary, conversation_context, user_inputs_summary, message_count, last_interaction, booking_status, booking_date, booking_time
  */
 export async function updateWhatsAppContext(leadId, summaryData) {
   try {
@@ -284,8 +284,11 @@ export async function updateWhatsAppContext(leadId, summaryData) {
       ...existingContext,
       whatsapp: {
         ...(existingContext.whatsapp || {}),
-        conversation_summary: summaryData.summary || existingContext.whatsapp?.conversation_summary,
-        last_interaction: new Date().toISOString(),
+        conversation_summary: summaryData.conversation_summary || summaryData.summary || existingContext.whatsapp?.conversation_summary,
+        conversation_context: summaryData.conversation_context || existingContext.whatsapp?.conversation_context,
+        user_inputs_summary: summaryData.user_inputs_summary || existingContext.whatsapp?.user_inputs_summary,
+        message_count: summaryData.message_count !== undefined ? summaryData.message_count : existingContext.whatsapp?.message_count,
+        last_interaction: summaryData.last_interaction || new Date().toISOString(),
         booking_status: summaryData.booking_status || existingContext.whatsapp?.booking_status,
         booking_date: summaryData.booking_date || existingContext.whatsapp?.booking_date,
         booking_time: summaryData.booking_time || existingContext.whatsapp?.booking_time

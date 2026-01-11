@@ -39,17 +39,6 @@ export function formatWhatsAppResponse(text, responseType, buttons = [], metadat
   // Clean the text before formatting
   const cleanedText = cleanWhatsAppText(text);
   
-  // If no buttons, send text only
-  if (!buttons || buttons.length === 0) {
-    return {
-      messaging_product: 'whatsapp',
-      type: 'text',
-      text: {
-        body: cleanedText
-      }
-    };
-  }
-  
   const basePayload = {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',

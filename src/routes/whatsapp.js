@@ -1,6 +1,6 @@
 import express from 'express';
 import { z } from 'zod';
-import { getOrCreateLead, buildCustomerContext, generateSummary, extractInterests } from '../services/customerService.js';
+import { getOrCreateLead, buildCustomerContext, generateSummary, extractInterests, updateWhatsAppContext } from '../services/customerService.js';
 import { getConversationHistory, addToHistory } from '../services/conversationService.js';
 import { 
   getOrCreateWhatsAppSession, 
@@ -251,8 +251,43 @@ router.post('/message', async (req, res, next) => {
         context: conversationContext,
         userInputsSummary: userInputsSummary
       });
+
+      // Sync to all_leads.unified_context
+      await updateWhatsAppContext(lead.id, {
+        conversation_summary: conversationSummary,
+        conversation_context: conversationContext,
+        user_inputs_summary: userInputsSummary,
+        message_count: updatedHistory.length,
+        last_interaction: new Date().toISOString()
+      });
+
+      logger.info('Synced WhatsApp context to unified_context');
       
       logger.info('Updated conversation summary, context, and user inputs summary');
+
+      // Sync to Dashboard
+      try {
+        await fetch(`${process.env.DASHBOARD_API_URL}/api/integrations/whatsapp`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': process.env.WHATSAPP_API_KEY,
+          },
+          body: JSON.stringify({
+            name: context.name,
+            phone: sessionId,  // WhatsApp phone
+            email: lead.email,
+            brand: 'proxe',
+            conversation_summary: conversationSummary,           // From generateSummary()
+            conversation_context: conversationContext,  // From whatsapp_sessions
+            user_inputs_summary: userInterests,         // From extractInterests()
+            message_count: updatedHistory.length,
+            last_interaction: new Date().toISOString()
+          })
+        });
+      } catch (error) {
+        console.error('Failed to sync to dashboard:', error);
+      }
     } catch (error) {
       console.error('=== ERROR updating conversation data ===', error);
       logger.error('Error updating conversation data:', error);

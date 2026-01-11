@@ -465,38 +465,66 @@ async function handleMessage(messageData) {
     let outputSentAt;
     let inputToOutputGap;
 
-    // Step 6: Generate AI response using Claude (for both new and returning users)
-    logger.info(`${isNewUser ? 'New' : 'Returning'} user detected - using Claude AI response`);
-    
-    // Check if new user clicked "See a Demo" - will be handled by booking flow later
-    const isBookingTrigger = message.toLowerCase() === 'see a demo' || 
-                             message.toLowerCase().includes('book a demo') ||
-                             message.toLowerCase().includes('schedule a demo');
-    
-    if (isBookingTrigger && isNewUser) {
-      logger.info('Booking trigger detected for new user - preparing for booking flow');
-      // For now, let Claude handle it with a specific response
-      // Booking flow will be added in next update
+    // Step 6: Handle NEW vs RETURNING users
+    if (isNewUser) {
+      // NEW USER: Send template response with buttons, skip Claude
+      logger.info('New user detected - sending template welcome message');
+      
+      const welcomeMessage = "Hey! I'm PROXe. What brings you here today?";
+      // New user gets: "Learn More" button (single button)
+      const welcomeButtons = ["Learn More"];
+      
+      // Send welcome message with buttons
+      try {
+        await sendWhatsAppMessage(sessionId, welcomeMessage, welcomeButtons);
+        logger.info('Welcome message sent to new user', { sessionId });
+      } catch (error) {
+        logger.error('Failed to send welcome message', {
+          sessionId,
+          error: error.message
+        });
+        throw error;
+      }
+
+      // Create mock AI response for logging consistency
+      outputSentAt = Date.now();
+      inputToOutputGap = outputSentAt - inputReceivedAt;
+      
+      aiResponse = {
+        rawResponse: welcomeMessage,
+        responseType: 'text_with_buttons',
+        buttons: welcomeButtons,
+        urgency: 'low',
+        nextAction: 'wait_for_user_selection',
+        tokensUsed: 0,
+        responseTime: outputSentAt - startTime
+      };
+    } else {
+      // RETURNING USER (has web history, booking, or WhatsApp history): Use Claude to generate personalized response
+      logger.info('Returning user detected - using Claude AI response with context-aware greeting');
+      
+      // Build customer context
+      const context = await buildCustomerContext(sessionId, brand);
+      logger.info('Customer context built successfully');
+
+      // Get conversation history (includes the message we just added)
+      const conversationHistory = await getConversationHistory(lead.id, 10);
+      logger.info(`Retrieved ${conversationHistory.length} messages from history`);
+
+      // Calculate message count for button logic (exclude current message from count)
+      // conversationHistory includes user messages and assistant responses
+      // For button logic, we want the count of previous exchanges
+      const messageCount = Math.floor(conversationHistory.length / 2); // Each exchange = user + assistant
+
+      // Generate AI response (pass isNewUser=false since we already checked)
+      // Claude will use the greeting instructions we added to generate context-aware greeting
+      aiResponse = await generateResponse(context, message, conversationHistory, false);
+      logger.info('AI response generated successfully');
+
+      // Calculate time gap
+      outputSentAt = Date.now();
+      inputToOutputGap = outputSentAt - inputReceivedAt;
     }
-    
-    // Build customer context
-    const context = await buildCustomerContext(sessionId, brand);
-    logger.info('Customer context built successfully');
-
-    // Get conversation history (includes the message we just added)
-    const conversationHistory = await getConversationHistory(lead.id, 10);
-    logger.info(`Retrieved ${conversationHistory.length} messages from history`);
-
-    // Generate AI response (pass isNewUser flag so Claude can generate appropriate greeting)
-    // Claude will use the greeting instructions to generate context-aware greeting
-    // For new users: "Hey! I'm PROXe - the AI system that captures every lead and never lets one slip away."
-    // System will automatically add 3 buttons: "What's PROXe", "See a Demo", "PROXe Features"
-    aiResponse = await generateResponse(context, message, conversationHistory, isNewUser);
-    logger.info('AI response generated successfully');
-
-    // Calculate time gap
-    outputSentAt = Date.now();
-    inputToOutputGap = outputSentAt - inputReceivedAt;
 
     // Step 7: Add assistant response to conversations table (via logMessage)
     await addToHistory(lead.id, aiResponse.rawResponse, 'assistant', 'text', {
@@ -565,21 +593,20 @@ async function handleMessage(messageData) {
     );
 
     // Step 10: Send WhatsApp message via Meta API
-    // Send Claude response with buttons (for both new and returning users)
-    try {
-      // Send message with buttons if available (supports 1-3 buttons)
-      await sendWhatsAppMessage(sessionId, aiResponse.rawResponse, aiResponse.buttons);
-      logger.info('WhatsApp message sent successfully', { 
-        sessionId, 
-        hasButtons: !!aiResponse.buttons && aiResponse.buttons.length > 0,
-        buttonCount: aiResponse.buttons?.length || 0
-      });
-    } catch (error) {
-      logger.error('Failed to send WhatsApp message', {
-        sessionId,
-        error: error.message
-      });
-      // Don't throw - we still want to store the log even if sending fails
+    // For new users, message already sent with buttons
+    // For returning users, send Claude response
+    if (!isNewUser) {
+      try {
+        // Send message with buttons if available
+        await sendWhatsAppMessage(sessionId, aiResponse.rawResponse, aiResponse.buttons);
+        logger.info('WhatsApp message sent successfully', { sessionId });
+      } catch (error) {
+        logger.error('Failed to send WhatsApp message', {
+          sessionId,
+          error: error.message
+        });
+        // Don't throw - we still want to store the log even if sending fails
+      }
     }
 
     // Step 14: Store conversation log

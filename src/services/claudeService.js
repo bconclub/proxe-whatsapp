@@ -195,159 +195,23 @@ function buildCustomerContextNote(context) {
 }
 
 /**
- * Select context-aware button based on conversation and customer context
- * Buttons only when they push user forward, not after full answers are given
- * Returns empty array [] when no button is needed
- * @param {string} aiResponse - AI's response text
- * @param {string} userMessage - User's message
- * @param {object} customerContext - Customer context object with booking info, etc.
- * @returns {Array<string>} Array with 0 or 1 button label
+ * Get fallback button if Claude didn't suggest one
+ * Simple fallback based on booking status
+ * @param {object} customerContext - Customer context object with booking info
+ * @returns {Array<string>} Array with exactly 1 button label
  */
-function selectContextButton(aiResponse, userMessage, customerContext = {}) {
-  const lowerResponse = aiResponse.toLowerCase();
-  const lowerMessage = userMessage.toLowerCase();
-  const responseWordCount = aiResponse.split(/\s+/).length;
-  
-  // Check user status
-  const hasBooking = customerContext?.booking?.exists ||
-                     lowerResponse.includes('demo is confirmed') ||
-                     lowerResponse.includes('demo booked') ||
-                     lowerResponse.includes('call scheduled') ||
-                     lowerResponse.includes('already have a demo') ||
-                     lowerResponse.includes('your demo is') ||
-                     (lowerResponse.includes('tuesday') && lowerResponse.includes('6:00'));
-  
-  const hasWebHistory = customerContext?.webConversationSummary || 
-                        customerContext?.webUserInputs?.length > 0;
-  
-  const isNewUser = !hasBooking && !hasWebHistory;
-  
-  // ============================================
-  // NO BUTTON SCENARIOS (check first)
-  // ============================================
-  
-  // Acknowledgments - never show button
-  const acknowledgments = ['thanks', 'thank you', 'ok', 'okay', 'got it', 'sounds good', 'great', 'awesome', 'perfect', 'cool', 'nice', 'alright', 'sure', 'yes', 'yep', 'yeah', 'no', 'nope'];
-  if (acknowledgments.some(phrase => lowerMessage.trim() === phrase || lowerMessage.trim() === phrase + '!')) {
-    return [];
-  }
-  
-  // Response already contains full pricing details - no button
-  const hasFullPricing = lowerResponse.includes('$99') && lowerResponse.includes('$199');
-  if (hasFullPricing) {
-    return [];
-  }
-  
-  // Response is long (full answer given) - no button for booking users
-  if (hasBooking && responseWordCount > 40) {
-    return [];
-  }
-  
-  // In middle of a flow (asking follow-up question) - no button
-  const askingFollowUp = lowerResponse.includes('what day') || 
-                         lowerResponse.includes('what time') || 
-                         lowerResponse.includes('which') ||
-                         lowerResponse.includes('would you like') ||
-                         lowerResponse.includes('do you prefer') ||
-                         lowerResponse.includes('can you share') ||
-                         lowerResponse.includes('tell me more about');
-  if (askingFollowUp) {
-    return [];
-  }
-  
-  // ============================================
-  // PRESSING ACTIONS (always show if relevant)
-  // ============================================
-  
-  // View Plans - user asking about pricing but not full answer yet
-  if ((lowerMessage.includes('price') || lowerMessage.includes('cost') || lowerMessage.includes('pricing') || lowerMessage.includes('how much') || lowerMessage.includes('plans')) && !hasFullPricing) {
-    // Only if response is a teaser, not full answer
-    if (responseWordCount < 30) {
-      return ["View Plans"];
-    }
-  }
-  
-  // Get Started - user ready to deploy
-  if (lowerMessage.includes('get started') || lowerMessage.includes('deploy') || lowerMessage.includes('set up') || lowerMessage.includes('start using') || lowerMessage.includes('ready to')) {
-    return ["Get Started"];
-  }
-  
-  // Talk to Team - needs human
-  if (lowerMessage.includes('talk to') || lowerMessage.includes('speak to') || lowerMessage.includes('human') || lowerMessage.includes('someone') || lowerMessage.includes('person') || lowerMessage.includes('support') || lowerMessage.includes('help me')) {
-    return ["Talk to Team"];
-  }
-  
-  // ============================================
-  // BOOKING USER - minimal buttons
-  // ============================================
+function getFallbackButton(customerContext = {}) {
+  const hasBooking = customerContext?.booking?.exists;
   
   if (hasBooking) {
-    // Only show button if response is very short teaser
-    if (responseWordCount < 20) {
-      // Check if teasing more info
-      if (lowerResponse.includes('want to') || lowerResponse.includes('would you like') || lowerResponse.includes('shall i')) {
-        return ["Learn More"];
-      }
-    }
-    // Default: no button for booking users
-    return [];
+    return ["Ask a Question"];
   }
-  
-  // ============================================
-  // RETURNING USER (web history, no booking)
-  // ============================================
-  
-  if (hasWebHistory && !hasBooking) {
-    // Nudge toward booking if response invites it
-    if (lowerResponse.includes('see it') || lowerResponse.includes('show you') || lowerResponse.includes('demo') || lowerResponse.includes('book')) {
-      return ["Book Demo"];
-    }
-    // Otherwise no button
-    return [];
-  }
-  
-  // ============================================
-  // NEW USER FLOW - Guided buttons
-  // ============================================
-  
-  if (isNewUser) {
-    const exactMessage = lowerMessage.trim();
-    
-    // User clicked "What's PROXe" button - show only "See a Demo"
-    if (exactMessage === "what's proxe" || exactMessage === "whats proxe") {
-      return ["See a Demo"];
-    }
-    
-    // User clicked "PROXe Features" button - show only "See a Demo"
-    if (exactMessage === "proxe features") {
-      return ["See a Demo"];
-    }
-    
-    // User clicked "See a Demo" button - no buttons, booking flow starts
-    if (exactMessage === "see a demo" || exactMessage.includes("book") || exactMessage.includes("demo") || exactMessage.includes("schedule")) {
-      return [];
-    }
-    
-    // First greeting message only - show 3 buttons
-    // Only if message is a simple greeting (hi, hello, hey) and SHORT
-    const isSimpleGreeting = /^(hi|hello|hey|hii+|hola|yo)[\s!.]*$/i.test(exactMessage);
-    if (isSimpleGreeting) {
-      return ["What's PROXe", "See a Demo", "PROXe Features"];
-    }
-    
-    // User asked a question or typed something else - no buttons, let conversation flow
-    return [];
-  }
-  
-  // ============================================
-  // DEFAULT - no button
-  // ============================================
-  return [];
+  return ["Learn More"];
 }
 
 /**
  * Parse Claude response for buttons and metadata
- * Extracts Claude's suggested button or uses context-aware selection
+ * Extracts Claude's suggested button or uses fallback
  */
 function parseResponse(rawResponse, userMessage = '', messageCount = 0, isNewUser = false, customerContext = null) {
   let text = rawResponse;
@@ -360,19 +224,28 @@ function parseResponse(rawResponse, userMessage = '', messageCount = 0, isNewUse
   if (matches.length > 0) {
     // Use the last button suggestion (most relevant)
     const suggestedButton = matches[matches.length - 1][1].trim();
-    buttons = [suggestedButton];
+    
+    // VALIDATE: Block booking buttons if customer already has booking
+    const hasBooking = customerContext?.booking?.exists;
+    const isBookingButton = /book|schedule|demo|call/i.test(suggestedButton);
+    
+    if (hasBooking && isBookingButton) {
+      buttons = ["Ask a Question"];
+    } else {
+      buttons = [suggestedButton];
+    }
     
     // Remove all button markers from text
     text = rawResponse.replace(buttonRegex, '').trim();
   } else {
-    // Use context-aware button selection if Claude didn't suggest one
-    buttons = selectContextButton(rawResponse, userMessage, customerContext || {});
+    // Fallback if Claude didn't suggest a button
+    buttons = getFallbackButton(customerContext);
   }
   
   // Clean up any extra whitespace or newlines at the end
   text = text.replace(/\n+$/, '').trim();
   
-  // Determine response type based on whether we have buttons
+  // Determine response type
   const responseType = buttons.length > 0 ? 'text_with_buttons' : 'text_only';
 
   // Determine urgency (simple heuristic)
