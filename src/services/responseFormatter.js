@@ -2,32 +2,26 @@ import { logger } from '../utils/logger.js';
 
 /**
  * Clean and format text for WhatsApp
- * Removes all markdown formatting to ensure clean plain text display
+ * Preserves WhatsApp formatting: *bold*, _italic_, ~strikethrough~
+ * Removes: code blocks (```), headers (#), links ([](url))
  */
 function cleanWhatsAppText(text) {
   if (!text) return '';
   
-  // Remove all markdown formatting for clean WhatsApp messages
   let cleaned = text
-    // Remove bold/italic markdown (*text*, **text**, _text_)
-    .replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1') // Remove bold/italic asterisks
-    .replace(/\*+/g, '') // Remove any remaining standalone asterisks
-    .replace(/_{1,2}([^_]+)_{1,2}/g, '$1') // Remove italic underscores
-    .replace(/_+/g, '') // Remove any remaining standalone underscores
-    // Remove strikethrough
-    .replace(/~{1,2}([^~]+)~{1,2}/g, '$1') // Remove strikethrough
-    .replace(/~+/g, '') // Remove any remaining tildes
-    // Remove markdown code blocks
+    // Remove markdown code blocks (```code```)
     .replace(/```[\s\S]*?```/g, '') // Remove code blocks
     .replace(/`([^`]+)`/g, '$1') // Remove inline code, keep content
     // Remove markdown links [text](url) -> text
     .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1')
-    // Remove markdown headers
+    // Remove markdown headers (# Header)
     .replace(/^#{1,6}\s+/gm, '') // Remove header markers
     // Clean up extra whitespace
     .replace(/\n{3,}/g, '\n\n') // Max 2 newlines
     .replace(/[ \t]+/g, ' ') // Multiple spaces to single space
     .trim();
+  
+  // Note: *bold*, _italic_, ~strikethrough~ are PRESERVED (WhatsApp supports these)
   
   return cleaned;
 }

@@ -1,6 +1,6 @@
 {
   "name": "whatsapp-proxe-backend",
-  "version": "1.0.1",
+  "version": "1.101",
   "description": "WhatsApp PROXe Backend Service - AI-powered message processing and response generation",
   "main": "src/server.js",
   "type": "module",
@@ -13,7 +13,8 @@
     "populate-kb": "node scripts/populate-knowledge-base.js",
     "version:patch": "npm version patch --no-git-tag-version",
     "version:minor": "npm version minor --no-git-tag-version",
-    "version:major": "npm version major --no-git-tag-version"
+    "version:major": "npm version major --no-git-tag-version",
+    "version:bump": "node scripts/bump-version-auto.js"
   },
   "keywords": [
     "whatsapp",
@@ -44,6 +45,3 @@
     "node": ">=18.0.0"
   }
 }
-
-
-

@@ -57,13 +57,8 @@ export async function generateResponse(customerContext, message, conversationHis
     const responseTime = Date.now() - startTime;
     const rawResponse = response.content[0].text;
     
-    // Parse response for action indicators (pass user message, conversation history length, and new user status)
-    // Count previous exchanges: conversationHistory has alternating user/assistant messages
-    // Count assistant messages to get number of previous responses
-    const messageCount = conversationHistory 
-      ? conversationHistory.filter(msg => msg.role === 'assistant').length 
-      : 0;
-    const parsed = parseResponse(rawResponse, message, messageCount, isNewUser, customerContext);
+    // Parse response and remove button markers
+    const parsed = parseResponse(rawResponse);
     
     logger.info('Claude response generated', {
       tokensUsed: response.usage?.output_tokens || 0,
@@ -195,80 +190,21 @@ function buildCustomerContextNote(context) {
 }
 
 /**
- * Get fallback button if Claude didn't suggest one
- * Simple fallback based on booking status
- * @param {object} customerContext - Customer context object with booking info
- * @returns {Array<string>} Array with exactly 1 button label
+ * Parse Claude response and remove button markers
  */
-function getFallbackButton(customerContext = {}) {
-  const hasBooking = customerContext?.booking?.exists;
-  
-  if (hasBooking) {
-    return ["Ask a Question"];
-  }
-  return ["Learn More"];
-}
-
-/**
- * Parse Claude response for buttons and metadata
- * Extracts Claude's suggested button or uses fallback
- */
-function parseResponse(rawResponse, userMessage = '', messageCount = 0, isNewUser = false, customerContext = null) {
+function parseResponse(rawResponse) {
   let text = rawResponse;
-  let buttons = [];
   
-  // Try to extract Claude's suggested button
-  const buttonRegex = /→\s*BUTTON:\s*(.+)/gi;
-  const matches = [...rawResponse.matchAll(buttonRegex)];
-  
-  if (matches.length > 0) {
-    // Use the last button suggestion (most relevant)
-    const suggestedButton = matches[matches.length - 1][1].trim();
-    
-    // VALIDATE: Block booking buttons if customer already has booking
-    const hasBooking = customerContext?.booking?.exists;
-    const isBookingButton = /book|schedule|demo|call/i.test(suggestedButton);
-    
-    if (hasBooking && isBookingButton) {
-      buttons = ["Ask a Question"];
-    } else {
-      buttons = [suggestedButton];
-    }
-    
-    // Remove all button markers from text
-    text = rawResponse.replace(buttonRegex, '').trim();
-  } else {
-    // Fallback if Claude didn't suggest a button
-    buttons = getFallbackButton(customerContext);
-  }
-  
-  // Clean up any extra whitespace or newlines at the end
+  // Remove button markers from Claude
+  text = text.replace(/→\s*BUTTON:\s*(.+)/gi, '').trim();
   text = text.replace(/\n+$/, '').trim();
   
-  // Determine response type
-  const responseType = buttons.length > 0 ? 'text_with_buttons' : 'text_only';
-
-  // Determine urgency (simple heuristic)
-  const urgencyKeywords = {
-    urgent: ['urgent', 'asap', 'immediately', 'emergency'],
-    high: ['important', 'soon', 'today', 'quickly'],
-    normal: []
-  };
-  
-  let urgency = 'normal';
-  const lowerText = text.toLowerCase();
-  if (urgencyKeywords.urgent.some(kw => lowerText.includes(kw))) {
-    urgency = 'urgent';
-  } else if (urgencyKeywords.high.some(kw => lowerText.includes(kw))) {
-    urgency = 'high';
-  }
-
   return {
     text: text.trim(),
-    responseType,
-    buttons,
-    urgency,
-    nextAction: buttons.length > 0 ? 'wait_for_response' : 'continue_conversation'
+    responseType: 'text_only',
+    buttons: [],
+    urgency: 'normal',
+    nextAction: 'continue_conversation'
   };
 }
 
