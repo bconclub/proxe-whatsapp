@@ -1,6 +1,6 @@
 {
   "name": "whatsapp-proxe-backend",
-  "version": "1.04",
+  "version": "1.05",
   "description": "WhatsApp PROXe Backend Service - AI-powered message processing and response generation",
   "main": "src/server.js",
   "type": "module",
