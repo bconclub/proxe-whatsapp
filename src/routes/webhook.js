@@ -151,6 +151,9 @@ router.get('/whatsapp', (req, res) => {
  * Validates signature, parses webhook format, and processes message
  */
 router.post('/whatsapp', async (req, res) => {
+  // Log full webhook payload from Meta
+  console.log('🔍 FULL META WEBHOOK:', JSON.stringify(req.body, null, 2));
+  
   try {
     // Step 1: Validate Meta signature
     // Debug: Check if req.body is a Buffer
