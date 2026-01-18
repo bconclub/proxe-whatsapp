@@ -151,11 +151,22 @@ router.get('/whatsapp', (req, res) => {
  * Validates signature, parses webhook format, and processes message
  */
 router.post('/whatsapp', async (req, res) => {
-  // Log full webhook payload from Meta
-  console.log('🔍 FULL META WEBHOOK:', JSON.stringify(req.body, null, 2));
+  // Log full webhook payload from Meta (parse Buffer to JSON if needed)
+  let webhookPayloadForLogging;
+  if (Buffer.isBuffer(req.body)) {
+    try {
+      webhookPayloadForLogging = JSON.parse(req.body.toString('utf8'));
+    } catch (e) {
+      webhookPayloadForLogging = { type: 'Buffer', parseError: e.message };
+    }
+  } else {
+    webhookPayloadForLogging = req.body;
+  }
+  console.log('🔍 FULL META WEBHOOK:', JSON.stringify(webhookPayloadForLogging, null, 2));
   
   // Check for status updates in the payload
-  const hasStatuses = req.body?.entry?.some(entryItem => 
+  const payloadToCheck = Buffer.isBuffer(req.body) ? webhookPayloadForLogging : req.body;
+  const hasStatuses = payloadToCheck?.entry?.some(entryItem => 
     entryItem?.changes?.some(change => change?.value?.statuses?.length > 0)
   );
   if (hasStatuses) {
