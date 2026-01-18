@@ -142,6 +142,7 @@ export async function getOrCreateLead(phone, brand = 'proxe', leadData = {}) {
         last_touchpoint: 'whatsapp',
         last_interaction_at: new Date().toISOString(),
         brand: brand,
+        lead_score: 0, // Default lead score (must be within 0-100 range per check_lead_score_range constraint)
         unified_context: {
           whatsapp: {
             last_interaction: new Date().toISOString(),
